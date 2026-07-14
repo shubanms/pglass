@@ -12,9 +12,19 @@ Under active construction, built in the phases described in the PRD (§18):
 
 - [x] **Phase 0** — Skeleton: Vite + React 19 + TS strict + Tailwind 4 + Biome, app
       shell, GitHub Pages deploy workflow.
-- [ ] **Phase 1** — Model + DSL: the data model, `.pgl` lexer/parser/printer, round-trip tests.
+- [x] **Phase 1** — Model + DSL: the data model (`src/model`), Postgres type catalog,
+      structural validator, and a hand-rolled `.pgl` lexer / error-tolerant parser /
+      deterministic printer with byte-exact round-trip tests (`src/dsl`).
 - [ ] Phases 2–14 — editor, canvas, sync loop, SQL import/export, diff engine, linter,
       generators, and polish.
+
+### The `.pgl` DSL
+
+`.pgl` is the terse authoring format that round-trips losslessly with the model.
+See [`public/samples/ecommerce.pgl`](./public/samples/ecommerce.pgl) for a worked
+example and the PRD §5 for the full grammar. The parser never throws — it always
+returns a (possibly partial) schema plus diagnostics — and the printer is
+byte-stable so git diffs stay clean.
 
 ## Local setup
 
