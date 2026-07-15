@@ -26,8 +26,13 @@ Under active construction, built in the phases described in the PRD (§18):
 - [x] **Phase 6** — SQL import: a `pg_dump --schema-only` importer — preprocessor,
       dollar-quote-aware tokenizer, and a DDL parser handling ALTER-style constraints,
       the sequence→identity trio, enums, indexes, and comments. Import dialog.
-- [ ] Phases 4–14 — canvas editing (drag-to-FK), elkjs auto-layout, persistence,
-      diff engine, linter, generators, and polish.
+- [x] **Phase 10** — Diff engine (the flagship): `diff(from, to)` → a topologically
+      ordered, risk-classified migration plan. Handles the hard cases — FK-blocked type
+      changes (auto drop/re-add), enum value removal (additive vs recreate ambiguity),
+      renames (by-id / heuristic), and a `USING`-clause generator. Diff dialog with
+      From/To pickers, toggleable ops, and copy/download.
+- [ ] Phases 4/5/8/9/11–14 — canvas editing (drag-to-FK), elkjs auto-layout,
+      persistence, linter, generators, and polish.
 
 ### The `.pgl` DSL
 

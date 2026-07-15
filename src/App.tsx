@@ -13,11 +13,12 @@ import { Canvas } from './canvas/Canvas.tsx';
 import { parse } from './dsl/parser.ts';
 import type { Table, TableId } from './model/types.ts';
 import { useStore } from './store/index.ts';
+import { DiffDialog } from './ui/DiffDialog.tsx';
 import { EditorPane } from './ui/EditorPane.tsx';
 import { ExportDialog } from './ui/ExportDialog.tsx';
 import { ImportDialog } from './ui/ImportDialog.tsx';
 
-type DialogKind = 'import' | 'export' | null;
+type DialogKind = 'import' | 'export' | 'diff' | null;
 const DialogCtx = createContext<(d: DialogKind) => void>(() => {});
 
 function useAppliedTheme() {
@@ -80,6 +81,7 @@ export function App() {
       </div>
       {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
       {dialog === 'export' && <ExportDialog onClose={() => setDialog(null)} />}
+      {dialog === 'diff' && <DiffDialog onClose={() => setDialog(null)} />}
     </DialogCtx.Provider>
   );
 }
@@ -115,7 +117,11 @@ function TopBar() {
         onClick={() => hasTables && setDialog('export')}
         disabled={!hasTables}
       />
-      <ToolbarButton icon={<GitCompare size={15} />} label="Diff" disabled />
+      <ToolbarButton
+        icon={<GitCompare size={15} />}
+        label="Diff"
+        onClick={() => setDialog('diff')}
+      />
       <ToolbarButton icon={<LayoutGrid size={15} />} label="Layout" disabled />
       <button
         type="button"
