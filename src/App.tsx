@@ -15,7 +15,7 @@ import type { Table, TableId } from './model/types.ts';
 import { useStore } from './store/index.ts';
 import { DiffDialog } from './ui/DiffDialog.tsx';
 import { EditorPane } from './ui/EditorPane.tsx';
-import { ExportDialog } from './ui/ExportDialog.tsx';
+import { GenerateDialog } from './ui/GenerateDialog.tsx';
 import { ImportDialog } from './ui/ImportDialog.tsx';
 
 type DialogKind = 'import' | 'export' | 'diff' | null;
@@ -80,7 +80,7 @@ export function App() {
         </div>
       </div>
       {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
-      {dialog === 'export' && <ExportDialog onClose={() => setDialog(null)} />}
+      {dialog === 'export' && <GenerateDialog onClose={() => setDialog(null)} />}
       {dialog === 'diff' && <DiffDialog onClose={() => setDialog(null)} />}
     </DialogCtx.Provider>
   );
