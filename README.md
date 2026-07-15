@@ -15,8 +15,14 @@ Under active construction, built in the phases described in the PRD (§18):
 - [x] **Phase 1** — Model + DSL: the data model (`src/model`), Postgres type catalog,
       structural validator, and a hand-rolled `.pgl` lexer / error-tolerant parser /
       deterministic printer with byte-exact round-trip tests (`src/dsl`).
-- [ ] Phases 2–14 — editor, canvas, sync loop, SQL import/export, diff engine, linter,
-      generators, and polish.
+- [x] **Store + sync loop** (§7, §8) — Zustand + zundo store with the bidirectional
+      text↔model reconciliation (identity merge preserves positions across edits).
+- [x] **Phase 2** — Editor: CodeMirror 6 with `.pgl` highlighting, context-aware
+      autocomplete, and a lint gutter wired to parser diagnostics.
+- [x] **Phase 3** — Read-only canvas: custom SVG renderer with pan/zoom, virtualization,
+      level-of-detail, orthogonal edge routing, and crow's-foot cardinality markers.
+- [ ] Phases 4–14 — canvas editing, SQL import/export, elkjs auto-layout, persistence,
+      diff engine, linter, generators, and polish.
 
 ### The `.pgl` DSL
 

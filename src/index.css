@@ -13,6 +13,16 @@
   --canvas-bg: #fafafa;
   --canvas-grid: #ececec;
 
+  --cm-keyword: #7c3aed;
+  --cm-type: #0369a1;
+  --cm-setting: #b45309;
+  --cm-ident: #18181b;
+  --cm-string: #047857;
+  --cm-number: #be185d;
+  --cm-operator: #6d28d9;
+  --cm-comment: #9ca3af;
+  --cm-punct: #71717a;
+
   color-scheme: light;
 }
 
@@ -26,6 +36,16 @@
   --accent: #7c74ff;
   --canvas-bg: #101014;
   --canvas-grid: #1e1e24;
+
+  --cm-keyword: #c4b5fd;
+  --cm-type: #7dd3fc;
+  --cm-setting: #fcd34d;
+  --cm-ident: #ededf0;
+  --cm-string: #6ee7b7;
+  --cm-number: #f9a8d4;
+  --cm-operator: #c4b5fd;
+  --cm-comment: #6b7280;
+  --cm-punct: #8a8a94;
 
   color-scheme: dark;
 }

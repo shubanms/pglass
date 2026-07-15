@@ -9,6 +9,7 @@ import { temporal } from 'zundo';
 import { create } from 'zustand';
 import { parse } from '../dsl/parser.ts';
 import { print } from '../dsl/printer.ts';
+import { gridLayout, needsLayout } from '../layout/grid.ts';
 import { newColumnId, newTableId } from '../model/ids.ts';
 import { emptySchema } from '../model/schema.ts';
 import type {
@@ -175,8 +176,13 @@ export const useStore = create<AppState>()(
             });
           },
 
-          loadSchema(schema) {
-            const text = print(schema);
+          loadSchema(rawSchema) {
+            // Imported / parsed schemas have no positions — lay them out so the
+            // canvas is readable immediately (§13.4). Text is printed from the
+            // pre-layout schema so positions (which the DSL doesn't encode) don't
+            // affect the canonical output.
+            const text = print(rawSchema);
+            const schema = needsLayout(rawSchema) ? gridLayout(rawSchema) : rawSchema;
             lastPrinted = text;
             set({
               schema,
