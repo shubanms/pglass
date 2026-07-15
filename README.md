@@ -21,7 +21,12 @@ Under active construction, built in the phases described in the PRD (§18):
       autocomplete, and a lint gutter wired to parser diagnostics.
 - [x] **Phase 3** — Read-only canvas: custom SVG renderer with pan/zoom, virtualization,
       level-of-detail, orthogonal edge routing, and crow's-foot cardinality markers.
-- [ ] Phases 4–14 — canvas editing, SQL import/export, elkjs auto-layout, persistence,
+- [x] **Phase 7** — SQL export: Postgres DDL writer (CREATE TYPE/TABLE/INDEX, ALTER ADD
+      FK, COMMENT ON), serial→IDENTITY normalization, options dialog with copy/download.
+- [x] **Phase 6** — SQL import: a `pg_dump --schema-only` importer — preprocessor,
+      dollar-quote-aware tokenizer, and a DDL parser handling ALTER-style constraints,
+      the sequence→identity trio, enums, indexes, and comments. Import dialog.
+- [ ] Phases 4–14 — canvas editing (drag-to-FK), elkjs auto-layout, persistence,
       diff engine, linter, generators, and polish.
 
 ### The `.pgl` DSL

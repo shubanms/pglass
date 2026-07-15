@@ -8,12 +8,17 @@ import {
   Moon,
   Sun,
 } from 'lucide-react';
-import { useEffect } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { Canvas } from './canvas/Canvas.tsx';
 import { parse } from './dsl/parser.ts';
 import type { Table, TableId } from './model/types.ts';
 import { useStore } from './store/index.ts';
 import { EditorPane } from './ui/EditorPane.tsx';
+import { ExportDialog } from './ui/ExportDialog.tsx';
+import { ImportDialog } from './ui/ImportDialog.tsx';
+
+type DialogKind = 'import' | 'export' | null;
+const DialogCtx = createContext<(d: DialogKind) => void>(() => {});
 
 function useAppliedTheme() {
   const theme = useStore((s) => s.ui.theme);
@@ -40,37 +45,42 @@ export function App() {
   useAppliedTheme();
   const ui = useStore((s) => s.ui);
   const hasTables = useStore((s) => s.schema.tables.length > 0);
+  const [dialog, setDialog] = useState<DialogKind>(null);
 
   return (
-    <div className="flex h-full flex-col">
-      <TopBar />
-      <div className="flex min-h-0 flex-1">
-        {ui.leftPanel && <LeftPanel />}
-        <main className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-h-0 flex-1">
-            {ui.editorPane !== 'hidden' && ui.editorPane !== 'full' && hasTables && (
-              <div
-                className="w-[42%] min-w-[280px] max-w-[560px] border-r"
-                style={{ borderColor: 'var(--border)' }}
-              >
-                <EditorPane />
-              </div>
-            )}
-            {ui.editorPane === 'full' ? (
-              <div className="min-h-0 flex-1">
-                <EditorPane />
-              </div>
-            ) : hasTables ? (
-              <Canvas />
-            ) : (
-              <EmptyState />
-            )}
-          </div>
-          <BottomPanel />
-        </main>
-        {ui.rightPanel && <RightPanel />}
+    <DialogCtx.Provider value={setDialog}>
+      <div className="flex h-full flex-col">
+        <TopBar />
+        <div className="flex min-h-0 flex-1">
+          {ui.leftPanel && <LeftPanel />}
+          <main className="flex min-w-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1">
+              {ui.editorPane !== 'hidden' && ui.editorPane !== 'full' && hasTables && (
+                <div
+                  className="w-[42%] min-w-[280px] max-w-[560px] border-r"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  <EditorPane />
+                </div>
+              )}
+              {ui.editorPane === 'full' ? (
+                <div className="min-h-0 flex-1">
+                  <EditorPane />
+                </div>
+              ) : hasTables ? (
+                <Canvas />
+              ) : (
+                <EmptyState />
+              )}
+            </div>
+            <BottomPanel />
+          </main>
+          {ui.rightPanel && <RightPanel />}
+        </div>
       </div>
-    </div>
+      {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
+      {dialog === 'export' && <ExportDialog onClose={() => setDialog(null)} />}
+    </DialogCtx.Provider>
   );
 }
 
@@ -78,6 +88,8 @@ function TopBar() {
   const theme = useStore((s) => s.ui.theme);
   const actions = useStore((s) => s.actions);
   const editorPane = useStore((s) => s.ui.editorPane);
+  const setDialog = useContext(DialogCtx);
+  const hasTables = useStore((s) => s.schema.tables.length > 0);
   const dark =
     theme === 'dark' ||
     (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -92,10 +104,19 @@ function TopBar() {
         <span>Pglass</span>
       </div>
       <div className="flex-1" />
-      <ToolbarButton icon={<FileUp size={15} />} label="Import" />
-      <ToolbarButton icon={<FileDown size={15} />} label="Export" />
-      <ToolbarButton icon={<GitCompare size={15} />} label="Diff" />
-      <ToolbarButton icon={<LayoutGrid size={15} />} label="Layout" />
+      <ToolbarButton
+        icon={<FileUp size={15} />}
+        label="Import"
+        onClick={() => setDialog('import')}
+      />
+      <ToolbarButton
+        icon={<FileDown size={15} />}
+        label="Export"
+        onClick={() => hasTables && setDialog('export')}
+        disabled={!hasTables}
+      />
+      <ToolbarButton icon={<GitCompare size={15} />} label="Diff" disabled />
+      <ToolbarButton icon={<LayoutGrid size={15} />} label="Layout" disabled />
       <button
         type="button"
         onClick={() => actions.setUi('editorPane', editorPane === 'hidden' ? 'split' : 'hidden')}
@@ -119,11 +140,23 @@ function TopBar() {
   );
 }
 
-function ToolbarButton({ icon, label }: { icon: React.ReactNode; label: string }) {
+function ToolbarButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
-      className="flex items-center gap-1.5 rounded px-2.5 py-1 text-sm hover:opacity-80"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex items-center gap-1.5 rounded px-2.5 py-1 text-sm hover:opacity-80 disabled:opacity-40"
       style={{ color: 'var(--text)' }}
     >
       {icon}

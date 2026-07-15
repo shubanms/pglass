@@ -22,6 +22,7 @@ import type {
   Table,
   TableId,
 } from '../model/types.ts';
+import { importSql } from '../sql/import/ddl-parser.ts';
 import { mergeSchema } from './merge.ts';
 
 enableMapSet();
@@ -82,6 +83,8 @@ export interface Actions {
 
   addRelationship(r: Omit<Relationship, 'id'>): RelId;
   deleteRelationship(id: RelId): void;
+
+  importSqlText(sql: string): Diagnostic[];
 
   selectTable(id: TableId, additive?: boolean): void;
   clearSelection(): void;
@@ -306,6 +309,13 @@ export const useStore = create<AppState>()(
             mutate((s) => {
               s.relationships = s.relationships.filter((r) => r.id !== id);
             });
+          },
+
+          importSqlText(sql) {
+            const { schema, diagnostics } = importSql(sql, NOW());
+            get().actions.loadSchema(schema);
+            set({ diagnostics });
+            return diagnostics;
           },
 
           selectTable(id, additive) {
