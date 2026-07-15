@@ -85,6 +85,7 @@ export interface Actions {
   deleteRelationship(id: RelId): void;
 
   importSqlText(sql: string): Diagnostic[];
+  applyFix(d: Diagnostic): void;
 
   selectTable(id: TableId, additive?: boolean): void;
   clearSelection(): void;
@@ -316,6 +317,13 @@ export const useStore = create<AppState>()(
             get().actions.loadSchema(schema);
             set({ diagnostics });
             return diagnostics;
+          },
+
+          applyFix(d) {
+            if (!d.fix) return;
+            const next = d.fix.apply(get().schema);
+            set({ schema: next, dirtySource: 'model' });
+            reprint();
           },
 
           selectTable(id, additive) {

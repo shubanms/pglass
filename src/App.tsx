@@ -8,10 +8,11 @@ import {
   Moon,
   Sun,
 } from 'lucide-react';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Canvas } from './canvas/Canvas.tsx';
 import { parse } from './dsl/parser.ts';
-import type { Table, TableId } from './model/types.ts';
+import { lint, sortDiagnostics } from './lint/engine.ts';
+import type { Diagnostic, Table, TableId } from './model/types.ts';
 import { useStore } from './store/index.ts';
 import { DiffDialog } from './ui/DiffDialog.tsx';
 import { EditorPane } from './ui/EditorPane.tsx';
@@ -300,48 +301,85 @@ function RightPanel() {
   );
 }
 
+function severityColor(sev: string): string {
+  return sev === 'error' ? '#dc2626' : sev === 'warning' ? '#d97706' : 'var(--text-muted)';
+}
+
+function DiagnosticRow({ d, i }: { d: Diagnostic; i: number }) {
+  const actions = useStore((s) => s.actions);
+  return (
+    <div key={`${d.code}-${i}`} className="flex items-center gap-2 py-0.5 text-xs">
+      <span style={{ color: severityColor(d.severity) }}>●</span>
+      <span className="mono" style={{ color: 'var(--text-muted)' }}>
+        {d.code}
+      </span>
+      <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--text)' }}>
+        {d.message}
+      </span>
+      {d.fix && (
+        <button
+          type="button"
+          onClick={() => actions.applyFix(d)}
+          className="shrink-0 rounded border px-1.5 py-0.5 text-[11px] hover:opacity-80"
+          style={{ borderColor: 'var(--border)', color: 'var(--accent)' }}
+          title={d.fix.title}
+        >
+          Fix
+        </button>
+      )}
+    </div>
+  );
+}
+
 function BottomPanel() {
-  const diagnostics = useStore((s) => s.diagnostics);
+  const parseDiagnostics = useStore((s) => s.diagnostics);
+  const schema = useStore((s) => s.schema);
   const tab = useStore((s) => s.ui.bottomPanel.tab);
-  const errors = diagnostics.filter((d) => d.severity === 'error');
+  const actions = useStore((s) => s.actions);
+
+  const lintResults = useMemo(() => sortDiagnostics(lint(schema)), [schema]);
+  const active = tab === 'lint' ? lintResults : parseDiagnostics;
+  const parseErrors = parseDiagnostics.filter((d) => d.severity === 'error');
+
+  const tabs: { id: 'diagnostics' | 'lint'; label: string; count: number }[] = [
+    { id: 'diagnostics', label: 'Diagnostics', count: parseDiagnostics.length },
+    { id: 'lint', label: 'Lint', count: lintResults.length },
+  ];
+
   return (
     <div
-      className="max-h-40 shrink-0 overflow-auto border-t text-sm"
+      className="flex max-h-48 shrink-0 flex-col border-t text-sm"
       style={{ borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
     >
-      <div className="flex items-center gap-1 px-2 py-1">
-        <span className="rounded px-2 py-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-          Diagnostics ({diagnostics.length})
-        </span>
+      <div
+        className="flex shrink-0 items-center gap-1 border-b px-2 py-1"
+        style={{ borderColor: 'var(--border)' }}
+      >
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => actions.setUi('bottomPanel', { open: true, tab: t.id })}
+            className="rounded px-2.5 py-0.5 text-xs"
+            style={{
+              background: tab === t.id ? 'var(--bg-elevated)' : 'transparent',
+              color: tab === t.id ? 'var(--text)' : 'var(--text-muted)',
+              fontWeight: tab === t.id ? 600 : 400,
+            }}
+          >
+            {t.label} ({t.count})
+          </button>
+        ))}
       </div>
-      <div className="px-3 pb-2">
-        {diagnostics.length === 0 ? (
+      <div className="min-h-0 flex-1 overflow-auto px-3 py-1.5">
+        {active.length === 0 ? (
           <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {tab === 'diagnostics' ? 'No problems.' : ''}
+            {tab === 'lint' ? 'No lint findings.' : 'No problems.'}
           </span>
         ) : (
-          diagnostics.map((d, i) => (
-            <div key={`${d.code}-${i}`} className="flex items-center gap-2 py-0.5 text-xs">
-              <span
-                style={{
-                  color:
-                    d.severity === 'error'
-                      ? '#dc2626'
-                      : d.severity === 'warning'
-                        ? '#d97706'
-                        : 'var(--text-muted)',
-                }}
-              >
-                ●
-              </span>
-              <span className="mono" style={{ color: 'var(--text-muted)' }}>
-                {d.code}
-              </span>
-              <span style={{ color: 'var(--text)' }}>{d.message}</span>
-            </div>
-          ))
+          active.map((d, i) => <DiagnosticRow key={`${d.code}-${i}`} d={d} i={i} />)
         )}
-        {errors.length > 0 && (
+        {tab === 'diagnostics' && parseErrors.length > 0 && (
           <div className="mt-1 text-xs" style={{ color: '#dc2626' }}>
             Canvas shows the last valid schema while errors are present.
           </div>

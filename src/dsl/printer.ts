@@ -199,12 +199,15 @@ function columnSettings(
   const s: string[] = [];
   // Fixed order: pk, increment, not null, unique, default, identity, generated,
   // check, collate, ref, color, note.
-  if (singlePk === col.id) s.push('pk');
+  const isSinglePk = singlePk === col.id;
+  if (isSinglePk) s.push('pk');
 
   const isIncrement = col.identity === 'by_default' && INTEGER_TYPES.has(col.type.name);
   if (isIncrement) s.push('increment');
 
-  if (col.notNull) s.push('not null');
+  // `pk` already implies NOT NULL, so don't print it redundantly for the
+  // single-column primary key (composite PK members still print it).
+  if (col.notNull && !isSinglePk) s.push('not null');
   if (col.unique) s.push('unique');
   if (col.default !== undefined) s.push(`default: ${defaultVal(col.default)}`);
 

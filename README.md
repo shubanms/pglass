@@ -36,8 +36,13 @@ Under active construction, built in the phases described in the PRD (§18):
       Mermaid, PlantUML, DBML, Markdown data dictionary, JSON Schema, and FK-aware
       faker seed data (dynamically imported to keep the main bundle lean). Unified
       Generate/export dialog. Golden-file tests per generator.
-- [ ] Phases 4/5/8/9/11/13/14 — canvas editing (drag-to-FK), elkjs auto-layout,
-      persistence, linter, and polish.
+- [x] **Phase 11** — Linter: a rule engine with correctness (L001–L009), performance
+      (L101–L108), design (L201–L211), and security (L301–L303) rules — each toggleable
+      with sensible defaults — plus one-click auto-fixes (add PK, index the FK,
+      varchar→text, timestamp→timestamptz, drop redundant index, enable RLS…). Tabbed
+      Lint panel with Fix buttons.
+- [ ] Phases 4/5/8/9/13/14 — canvas editing (drag-to-FK), elkjs auto-layout,
+      persistence, and polish.
 
 ### The `.pgl` DSL
 
