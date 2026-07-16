@@ -78,6 +78,7 @@ export interface Actions {
   addTable(partial?: Partial<Table>): TableId;
   updateTable(id: TableId, patch: Partial<Table>): void;
   deleteTables(ids: TableId[]): void;
+  duplicateTable(id: TableId): TableId;
   moveTables(ids: TableId[], dx: number, dy: number): void;
 
   addColumn(table: TableId, partial?: Partial<Column>): ColumnId;
@@ -252,6 +253,29 @@ export const useStore = create<AppState>()(
               s.indexes = s.indexes.filter((ix) => !set0.has(ix.table));
             });
             get().actions.clearSelection();
+          },
+
+          duplicateTable(id) {
+            const newId = newTableId();
+            mutate((s) => {
+              const src = s.tables.find((t) => t.id === id);
+              if (!src) return;
+              const colIdMap = new Map<ColumnId, ColumnId>();
+              const columns = src.columns.map((c) => {
+                const cid = newColumnId();
+                colIdMap.set(c.id, cid);
+                return { ...c, id: cid };
+              });
+              s.tables.push({
+                ...src,
+                id: newId,
+                name: uniqueTableName(s, `${src.name}_copy`),
+                columns,
+                primaryKey: src.primaryKey.map((c) => colIdMap.get(c) ?? c),
+                pos: { x: src.pos.x + 40, y: src.pos.y + 40 },
+              });
+            });
+            return newId;
           },
 
           moveTables(ids, dx, dy) {

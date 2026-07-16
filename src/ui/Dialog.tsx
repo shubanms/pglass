@@ -22,12 +22,12 @@ export function Dialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-6"
+      className="pgl-overlay fixed inset-0 z-50 flex items-center justify-center p-6"
       style={{ background: 'rgba(0,0,0,0.4)' }}
       onPointerDown={onClose}
     >
       <div
-        className={`flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border shadow-2xl ${wide ? 'max-w-4xl' : 'max-w-lg'}`}
+        className={`pgl-dialog flex max-h-[85vh] w-full flex-col overflow-hidden rounded-lg border shadow-2xl ${wide ? 'max-w-4xl' : 'max-w-lg'}`}
         style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}
         onPointerDown={(e) => e.stopPropagation()}
       >
