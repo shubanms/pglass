@@ -1,51 +1,70 @@
 @import "tailwindcss";
 
 /* Theming via CSS custom properties — canvas colours derive from these so
-   SVG export honours the active theme (PRD §15.3). */
+   SVG export honours the active theme (PRD §15.3). Palette is Notion-warm:
+   soft off-white surfaces, gentle borders, generous rounding. */
 :root {
-  --bg: #ffffff;
-  --bg-panel: #f7f7f8;
+  --bg: #f7f7f5;
+  --bg-panel: #fbfbfa;
   --bg-elevated: #ffffff;
-  --border: #e4e4e7;
-  --text: #18181b;
-  --text-muted: #71717a;
-  --accent: #4f46e5;
-  --canvas-bg: #fafafa;
-  --canvas-grid: #ececec;
+  --bg-hover: rgba(55, 53, 47, 0.06);
+  --border: #ebeae8;
+  --border-strong: #e0dfdc;
+  --text: #37352f;
+  --text-muted: #787774;
+  --accent: #2f6fed;
+  --accent-soft: rgba(47, 111, 237, 0.12);
+  --canvas-bg: #f4f4f2;
+  --canvas-grid: #e7e6e3;
+
+  /* shape + elevation scale */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.06), 0 1px 3px rgba(15, 15, 15, 0.05);
+  --shadow-md: 0 4px 12px rgba(15, 15, 15, 0.1), 0 2px 4px rgba(15, 15, 15, 0.06);
+  --shadow-lg: 0 12px 32px rgba(15, 15, 15, 0.16), 0 4px 8px rgba(15, 15, 15, 0.08);
 
   --cm-keyword: #7c3aed;
   --cm-type: #0369a1;
   --cm-setting: #b45309;
-  --cm-ident: #18181b;
+  --cm-ident: #37352f;
   --cm-string: #047857;
   --cm-number: #be185d;
   --cm-operator: #6d28d9;
   --cm-comment: #9ca3af;
-  --cm-punct: #71717a;
+  --cm-punct: #787774;
 
   color-scheme: light;
 }
 
 :root[data-theme="dark"] {
-  --bg: #0e0e11;
-  --bg-panel: #161619;
-  --bg-elevated: #1c1c21;
-  --border: #2a2a30;
-  --text: #ededf0;
-  --text-muted: #8a8a94;
-  --accent: #7c74ff;
-  --canvas-bg: #101014;
-  --canvas-grid: #1e1e24;
+  --bg: #191919;
+  --bg-panel: #1e1e1e;
+  --bg-elevated: #252525;
+  --bg-hover: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.094);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #e9e9e7;
+  --text-muted: #9b9a97;
+  --accent: #529cff;
+  --accent-soft: rgba(82, 156, 255, 0.16);
+  --canvas-bg: #1a1a1a;
+  --canvas-grid: #262626;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.4);
 
   --cm-keyword: #c4b5fd;
   --cm-type: #7dd3fc;
   --cm-setting: #fcd34d;
-  --cm-ident: #ededf0;
+  --cm-ident: #e9e9e7;
   --cm-string: #6ee7b7;
   --cm-number: #f9a8d4;
   --cm-operator: #c4b5fd;
   --cm-comment: #6b7280;
-  --cm-punct: #8a8a94;
+  --cm-punct: #9b9a97;
 
   color-scheme: dark;
 }
@@ -55,10 +74,13 @@
   --bg: #ffffff;
   --bg-panel: #ffffff;
   --bg-elevated: #ffffff;
+  --bg-hover: rgba(0, 0, 0, 0.06);
   --border: #000000;
+  --border-strong: #000000;
   --text: #000000;
   --text-muted: #333333;
   --accent: #1d4ed8;
+  --accent-soft: rgba(29, 78, 216, 0.14);
   --canvas-bg: #ffffff;
   --canvas-grid: #d4d4d4;
 
@@ -87,6 +109,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -162,6 +185,53 @@ code,
 /* toolbar / small controls get a gentle press feedback */
 button:not(:disabled):active {
   transform: translateY(0.5px);
+}
+
+/* ── resizable panel dividers ── */
+.pgl-resizer {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 10;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.pgl-resizer-v {
+  width: 5px;
+  margin: 0 -2px;
+  cursor: col-resize;
+}
+.pgl-resizer-h {
+  height: 5px;
+  margin: -2px 0;
+  cursor: row-resize;
+}
+.pgl-resizer:hover,
+.pgl-resizer[data-active="true"] {
+  background: var(--accent-soft);
+}
+.pgl-resizer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.pgl-resizer-v::after {
+  width: 1px;
+}
+.pgl-resizer-h::after {
+  height: 1px;
+}
+.pgl-resizer:hover::after,
+.pgl-resizer[data-active="true"]::after {
+  opacity: 0.7;
+}
+
+/* soft hover surface used across chrome (buttons, list rows) */
+.pgl-hover:hover {
+  background: var(--bg-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {

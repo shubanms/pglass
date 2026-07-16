@@ -68,7 +68,15 @@ Under active construction, built in the phases described in the PRD (§18):
       grid options), a high-contrast **presentation theme**, two more genuinely-good
       **samples** (SaaS multi-tenant, Northwind), and an offline **service worker** so the
       app keeps working with the network pulled.
-- [ ] Phase 14 — minimap, table groups, sticky notes, M:N junction collapse.
+- [x] **Phase 15** — UI/UX revamp: a calmer, Notion-style visual system (warm
+      surfaces, softer borders, a radius/shadow scale, more breathing room, light + dark);
+      every panel is now **drag-resizable and collapsible** with sizes remembered across
+      reloads (`ui/Resizer.tsx`, layout persisted to `localStorage`); the canvas gains
+      **marquee drag-select**, a live **minimap**, zoom −/%/+ controls, a **view-options**
+      popover, and previously-hidden toggles wired up — compact columns, focus-mode
+      spotlight, edge style, grid/snap. Dragging from a column's FK port no longer selects
+      row text.
+- [ ] Phase 14 — table groups, sticky notes, M:N junction collapse.
 
 ### The `.pgl` DSL
 

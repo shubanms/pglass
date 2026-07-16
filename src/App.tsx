@@ -1,4 +1,6 @@
 import {
+  ChevronDown,
+  ChevronUp,
   Columns2,
   Database,
   FileDown,
@@ -7,11 +9,16 @@ import {
   GitCompare,
   LayoutGrid,
   Moon,
+  PanelBottom,
+  PanelLeft,
+  PanelLeftClose,
+  PanelRight,
+  PanelRightClose,
   Save,
   Sun,
   X,
 } from 'lucide-react';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from './canvas/Canvas.tsx';
 import { parse } from './dsl/parser.ts';
 import { lint, sortDiagnostics } from './lint/engine.ts';
@@ -23,6 +30,7 @@ import { EditorPane } from './ui/EditorPane.tsx';
 import { ExportImageDialog } from './ui/ExportImageDialog.tsx';
 import { GenerateDialog } from './ui/GenerateDialog.tsx';
 import { ImportDialog } from './ui/ImportDialog.tsx';
+import { Resizer } from './ui/Resizer.tsx';
 import { type Persistence, usePersistence } from './ui/usePersistence.ts';
 import { useShortcuts } from './ui/useShortcuts.ts';
 
@@ -87,16 +95,21 @@ export function App() {
         <div className="flex h-full flex-col">
           <TopBar />
           <div className="flex min-h-0 flex-1">
-            {ui.leftPanel && <LeftPanel />}
+            {ui.leftPanel && (
+              <>
+                <LeftPanel />
+                <SplitHandle dim="leftWidth" sign={1} aria-label="Resize table list" />
+              </>
+            )}
             <main className="flex min-w-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1">
                 {ui.editorPane !== 'hidden' && ui.editorPane !== 'full' && hasTables && (
-                  <div
-                    className="w-[42%] min-w-[280px] max-w-[560px] border-r"
-                    style={{ borderColor: 'var(--border)' }}
-                  >
-                    <EditorPane />
-                  </div>
+                  <>
+                    <div className="shrink-0" style={{ width: ui.layout.editorWidth }}>
+                      <EditorPane />
+                    </div>
+                    <SplitHandle dim="editorWidth" sign={1} aria-label="Resize editor" />
+                  </>
                 )}
                 {ui.editorPane === 'full' ? (
                   <div className="min-h-0 flex-1">
@@ -108,9 +121,17 @@ export function App() {
                   <EmptyState />
                 )}
               </div>
+              {ui.bottomPanel.open && (
+                <SplitHandle dim="bottomHeight" sign={-1} aria-label="Resize diagnostics" />
+              )}
               <BottomPanel />
             </main>
-            {ui.rightPanel && <RightPanel />}
+            {ui.rightPanel && (
+              <>
+                <SplitHandle dim="rightWidth" sign={-1} aria-label="Resize inspector" />
+                <RightPanel />
+              </>
+            )}
           </div>
         </div>
         {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
@@ -123,6 +144,29 @@ export function App() {
         {persist.toast && <Toast message={persist.toast} onClose={persist.dismissToast} />}
       </DialogCtx.Provider>
     </PersistCtx.Provider>
+  );
+}
+
+function SplitHandle({
+  dim,
+  sign,
+  'aria-label': ariaLabel,
+}: {
+  dim: keyof import('./store/index.ts').PanelLayout;
+  sign: 1 | -1;
+  'aria-label': string;
+}) {
+  const setLayout = useStore((s) => s.actions.setLayout);
+  const base = useRef(0);
+  return (
+    <Resizer
+      orientation={dim === 'bottomHeight' ? 'horizontal' : 'vertical'}
+      aria-label={ariaLabel}
+      onStart={() => {
+        base.current = useStore.getState().ui.layout[dim];
+      }}
+      onDelta={(d) => setLayout({ [dim]: base.current + sign * d })}
+    />
   );
 }
 
@@ -174,9 +218,20 @@ function usePaletteCommands(cb: {
         ),
       ),
       cmd('toggle-left', 'Toggle table list', () => actions.toggleUi('leftPanel')),
+      cmd('toggle-right', 'Toggle inspector', () => actions.toggleUi('rightPanel')),
       cmd('toggle-bottom', 'Toggle diagnostics panel', () => {
         const bp = useStore.getState().ui.bottomPanel;
         actions.setUi('bottomPanel', { open: !bp.open, tab: bp.tab });
+      }),
+      cmd('toggle-grid', 'Toggle grid', () => actions.toggleUi('showGrid')),
+      cmd('toggle-snap', 'Toggle snap to grid', () => actions.toggleUi('snapToGrid')),
+      cmd('toggle-minimap', 'Toggle minimap', () => actions.toggleUi('showMinimap')),
+      cmd('toggle-compact', 'Toggle compact columns', () => actions.toggleUi('compactColumns')),
+      cmd('toggle-focus', 'Toggle focus mode', () => actions.toggleUi('focusMode')),
+      cmd('cycle-edges', 'Cycle edge style', () => {
+        const order = ['orthogonal', 'bezier', 'straight'] as const;
+        const cur = useStore.getState().ui.edgeStyle;
+        actions.setUi('edgeStyle', order[(order.indexOf(cur) + 1) % order.length]!);
       }),
     ];
   }, [actions, theme, cb]);
@@ -209,6 +264,9 @@ function TopBar() {
   const theme = useStore((s) => s.ui.theme);
   const actions = useStore((s) => s.actions);
   const editorPane = useStore((s) => s.ui.editorPane);
+  const leftPanel = useStore((s) => s.ui.leftPanel);
+  const rightPanel = useStore((s) => s.ui.rightPanel);
+  const bottomOpen = useStore((s) => s.ui.bottomPanel.open);
   const setDialog = useContext(DialogCtx);
   const persist = useContext(PersistCtx);
   const hasTables = useStore((s) => s.schema.tables.length > 0);
@@ -218,7 +276,7 @@ function TopBar() {
 
   return (
     <header
-      className="flex h-11 shrink-0 items-center gap-3 border-b px-3"
+      className="flex h-12 shrink-0 items-center gap-2 border-b px-3"
       style={{ borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
     >
       <div className="flex items-center gap-2 font-semibold">
@@ -255,26 +313,85 @@ function TopBar() {
         onClick={() => setDialog('diff')}
       />
       <LayoutMenu />
-      <button
-        type="button"
+
+      <div className="mx-1 h-5 w-px" style={{ background: 'var(--border)' }} />
+
+      <IconToggle
+        active={leftPanel}
+        onClick={() => actions.toggleUi('leftPanel')}
+        label="Toggle table list (⌘B)"
+      >
+        <PanelLeft size={16} />
+      </IconToggle>
+      <IconToggle
+        active={editorPane !== 'hidden'}
         onClick={() => actions.setUi('editorPane', editorPane === 'hidden' ? 'split' : 'hidden')}
-        className="ml-1 rounded p-1.5 hover:opacity-80"
-        style={{ color: 'var(--text-muted)' }}
-        aria-label="Toggle editor"
-        title="Toggle editor (Cmd+\\)"
+        label="Toggle editor (⌘\\)"
       >
         <Columns2 size={16} />
-      </button>
+      </IconToggle>
+      <IconToggle
+        active={bottomOpen}
+        onClick={() =>
+          actions.setUi('bottomPanel', {
+            open: !bottomOpen,
+            tab: useStore.getState().ui.bottomPanel.tab,
+          })
+        }
+        label="Toggle diagnostics (⌘/)"
+      >
+        <PanelBottom size={16} />
+      </IconToggle>
+      <IconToggle
+        active={rightPanel}
+        onClick={() => actions.toggleUi('rightPanel')}
+        label="Toggle inspector"
+      >
+        <PanelRight size={16} />
+      </IconToggle>
+
+      <div className="mx-1 h-5 w-px" style={{ background: 'var(--border)' }} />
+
       <button
         type="button"
         onClick={() => actions.setUi('theme', dark ? 'light' : 'dark')}
-        className="rounded p-1.5 hover:opacity-80"
+        className="pgl-hover rounded-md p-1.5"
         style={{ color: 'var(--text-muted)' }}
         aria-label="Toggle theme"
+        title="Toggle light / dark"
       >
         {dark ? <Sun size={16} /> : <Moon size={16} />}
       </button>
     </header>
+  );
+}
+
+function IconToggle({
+  active,
+  onClick,
+  label,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      title={label}
+      className="pgl-hover rounded-md p-1.5 transition-colors"
+      style={{
+        color: active ? 'var(--text)' : 'var(--text-muted)',
+        background: active ? 'var(--bg-hover)' : 'transparent',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -294,7 +411,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex items-center gap-1.5 rounded px-2.5 py-1 text-sm hover:opacity-80 disabled:opacity-40"
+      className="pgl-hover flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
       style={{ color: 'var(--text)' }}
     >
       {icon}
@@ -377,64 +494,108 @@ function LayoutMenu() {
   );
 }
 
+function PanelHeader({
+  title,
+  count,
+  onCollapse,
+  collapseLabel,
+  children,
+}: {
+  title: string;
+  count?: number;
+  onCollapse: () => void;
+  collapseLabel: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex h-9 shrink-0 items-center gap-1.5 px-3"
+      style={{ color: 'var(--text-muted)' }}
+    >
+      <span className="text-[11px] font-semibold uppercase tracking-wider">
+        {title}
+        {count !== undefined && <span className="ml-1 opacity-60">{count}</span>}
+      </span>
+      <div className="flex-1" />
+      {children}
+      <button
+        type="button"
+        onClick={onCollapse}
+        aria-label={collapseLabel}
+        title={collapseLabel}
+        className="pgl-hover -mr-1 rounded p-1"
+      >
+        <PanelLeftClose size={14} />
+      </button>
+    </div>
+  );
+}
+
 function LeftPanel() {
   const schema = useStore((s) => s.schema);
   const selected = useStore((s) => s.selection.tables);
   const actions = useStore((s) => s.actions);
+  const width = useStore((s) => s.ui.layout.leftWidth);
   return (
     <aside
-      className="w-56 shrink-0 overflow-auto border-r p-2 text-sm"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
+      className="flex shrink-0 flex-col overflow-hidden border-r"
+      style={{ width, borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
     >
-      <div
-        className="px-1 pb-1 text-xs font-medium uppercase tracking-wide"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        Tables ({schema.tables.length})
-      </div>
-      {schema.tables.map((t) => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => actions.selectTable(t.id)}
-          className="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:opacity-80"
-          style={{
-            background: selected.has(t.id) ? 'var(--bg-elevated)' : 'transparent',
-            color: 'var(--text)',
-          }}
-        >
-          <span
-            className="h-2 w-2 shrink-0 rounded-full"
-            style={{ background: t.color ?? 'var(--accent)' }}
-          />
-          <span className="truncate">{t.name}</span>
-          <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
-            {t.columns.length}
-          </span>
-        </button>
-      ))}
-      {schema.enums.length > 0 && (
-        <>
-          <div
-            className="mt-3 px-1 pb-1 text-xs font-medium uppercase tracking-wide"
-            style={{ color: 'var(--text-muted)' }}
+      <PanelHeader
+        title="Tables"
+        count={schema.tables.length}
+        onCollapse={() => actions.setUi('leftPanel', false)}
+        collapseLabel="Hide table list"
+      />
+      <div className="min-h-0 flex-1 overflow-auto px-2 pb-2 text-[13px]">
+        {schema.tables.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => actions.revealTable(t.id)}
+            className="pgl-hover flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors"
+            style={{
+              background: selected.has(t.id) ? 'var(--accent-soft)' : 'transparent',
+              color: 'var(--text)',
+            }}
           >
-            Enums ({schema.enums.length})
-          </div>
-          {schema.enums.map((e) => (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full"
+              style={{ background: t.color ?? 'var(--accent)' }}
+            />
+            <span className="truncate">{t.name}</span>
+            <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
+              {t.columns.length}
+            </span>
+          </button>
+        ))}
+        {schema.enums.length > 0 && (
+          <>
             <div
-              key={e.id}
-              className="flex items-center gap-2 px-2 py-1"
-              style={{ color: 'var(--text)' }}
+              className="mt-4 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
             >
-              <span className="truncate">{e.name}</span>
-              <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
-                {e.values.length}
-              </span>
+              Enums <span className="opacity-60">{schema.enums.length}</span>
             </div>
-          ))}
-        </>
-      )}
+            {schema.enums.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                style={{ color: 'var(--text)' }}
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+                  style={{ background: 'var(--text-muted)', opacity: 0.5 }}
+                />
+                <span className="truncate">{e.name}</span>
+                <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {e.values.length}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
     </aside>
   );
 }
@@ -462,91 +623,107 @@ function RightPanel() {
   const id = [...selectedIds][0] as TableId | undefined;
   const table: Table | undefined = id ? schema.tables.find((t) => t.id === id) : undefined;
 
+  const width = useStore((s) => s.ui.layout.rightWidth);
   return (
     <aside
-      className="w-72 shrink-0 overflow-auto border-l p-3 text-sm"
-      style={{ borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
+      className="flex shrink-0 flex-col overflow-hidden border-l"
+      style={{ width, borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
     >
-      <div className="mb-2 font-medium" style={{ color: 'var(--text-muted)' }}>
-        Inspector
+      <div
+        className="flex h-9 shrink-0 items-center gap-1.5 px-3"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <span className="text-[11px] font-semibold uppercase tracking-wider">Inspector</span>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => actions.setUi('rightPanel', false)}
+          aria-label="Hide inspector"
+          title="Hide inspector"
+          className="pgl-hover -mr-1 rounded p-1"
+        >
+          <PanelRightClose size={14} />
+        </button>
       </div>
-      {!table ? (
-        <p style={{ color: 'var(--text-muted)' }}>Select a table to edit its properties.</p>
-      ) : (
-        <div className="space-y-3">
-          <label className="block">
-            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-              Name
-            </span>
-            <input
-              value={table.name}
-              onChange={(e) => actions.updateTable(table.id, { name: e.target.value })}
-              className="mt-0.5 w-full rounded border px-2 py-1 outline-none focus:ring-2"
-              style={{
-                borderColor: 'var(--border)',
-                background: 'var(--bg-elevated)',
-                color: 'var(--text)',
-              }}
-            />
-          </label>
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              {INSPECTOR_SWATCHES.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  aria-label={`Colour ${c}`}
-                  onClick={() => actions.updateTable(table.id, { color: c })}
-                  className="h-4 w-4 rounded-full ring-1 ring-black/10 transition-transform hover:scale-125"
-                  style={{
-                    background: c,
-                    outline: table.color === c ? '2px solid var(--text)' : 'none',
-                    outlineOffset: '1px',
-                  }}
-                />
-              ))}
-            </div>
-            <label
-              className="flex items-center gap-1.5 text-xs"
-              style={{ color: 'var(--text-muted)' }}
-            >
+      <div className="min-h-0 flex-1 overflow-auto p-3 text-[13px]">
+        {!table ? (
+          <p style={{ color: 'var(--text-muted)' }}>Select a table to edit its properties.</p>
+        ) : (
+          <div className="space-y-3">
+            <label className="block">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Name
+              </span>
               <input
-                type="checkbox"
-                checked={!!table.rowLevelSecurity}
-                onChange={(e) =>
-                  actions.updateTable(table.id, { rowLevelSecurity: e.target.checked })
-                }
+                value={table.name}
+                onChange={(e) => actions.updateTable(table.id, { name: e.target.value })}
+                className="mt-0.5 w-full rounded border px-2 py-1 outline-none focus:ring-2"
+                style={{
+                  borderColor: 'var(--border)',
+                  background: 'var(--bg-elevated)',
+                  color: 'var(--text)',
+                }}
               />
-              RLS
             </label>
-          </div>
 
-          <div>
-            <div className="mb-1 text-xs" style={{ color: 'var(--text-muted)' }}>
-              Columns ({table.columns.length})
-            </div>
-            <div className="space-y-1">
-              {table.columns.map((c) => (
-                <InspectorColumn
-                  key={c.id}
-                  tableId={table.id}
-                  column={c}
-                  isPk={table.primaryKey.includes(c.id)}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                {INSPECTOR_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    aria-label={`Colour ${c}`}
+                    onClick={() => actions.updateTable(table.id, { color: c })}
+                    className="h-4 w-4 rounded-full ring-1 ring-black/10 transition-transform hover:scale-125"
+                    style={{
+                      background: c,
+                      outline: table.color === c ? '2px solid var(--text)' : 'none',
+                      outlineOffset: '1px',
+                    }}
+                  />
+                ))}
+              </div>
+              <label
+                className="flex items-center gap-1.5 text-xs"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!table.rowLevelSecurity}
+                  onChange={(e) =>
+                    actions.updateTable(table.id, { rowLevelSecurity: e.target.checked })
+                  }
                 />
-              ))}
+                RLS
+              </label>
             </div>
-            <button
-              type="button"
-              onClick={() => actions.addColumn(table.id)}
-              className="mt-2 w-full rounded border px-2 py-1 text-xs transition-transform hover:opacity-80 active:scale-[0.99]"
-              style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
-            >
-              + Add column
-            </button>
+
+            <div>
+              <div className="mb-1 text-xs" style={{ color: 'var(--text-muted)' }}>
+                Columns ({table.columns.length})
+              </div>
+              <div className="space-y-1">
+                {table.columns.map((c) => (
+                  <InspectorColumn
+                    key={c.id}
+                    tableId={table.id}
+                    column={c}
+                    isPk={table.primaryKey.includes(c.id)}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => actions.addColumn(table.id)}
+                className="mt-2 w-full rounded border px-2 py-1 text-xs transition-transform hover:opacity-80 active:scale-[0.99]"
+                style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+              >
+                + Add column
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </aside>
   );
 }
@@ -667,6 +844,8 @@ function BottomPanel() {
   const parseDiagnostics = useStore((s) => s.diagnostics);
   const schema = useStore((s) => s.schema);
   const tab = useStore((s) => s.ui.bottomPanel.tab);
+  const open = useStore((s) => s.ui.bottomPanel.open);
+  const height = useStore((s) => s.ui.layout.bottomHeight);
   const actions = useStore((s) => s.actions);
 
   const lintResults = useMemo(() => sortDiagnostics(lint(schema)), [schema]);
@@ -680,51 +859,65 @@ function BottomPanel() {
 
   return (
     <div
-      className="flex max-h-48 shrink-0 flex-col border-t text-sm"
+      className="flex shrink-0 flex-col border-t"
       style={{ borderColor: 'var(--border)', background: 'var(--bg-panel)' }}
     >
-      <div
-        className="flex shrink-0 items-center gap-1 border-b px-2 py-1"
-        style={{ borderColor: 'var(--border)' }}
-      >
+      {/* header strip — always visible, doubles as the collapse toggle */}
+      <div className="flex h-8 shrink-0 items-center gap-1 px-2">
         {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => actions.setUi('bottomPanel', { open: true, tab: t.id })}
-            className="rounded px-2.5 py-0.5 text-xs"
+            className="pgl-hover rounded-md px-2.5 py-1 text-xs"
             style={{
-              background: tab === t.id ? 'var(--bg-elevated)' : 'transparent',
-              color: tab === t.id ? 'var(--text)' : 'var(--text-muted)',
+              background: open && tab === t.id ? 'var(--accent-soft)' : 'transparent',
+              color: open && tab === t.id ? 'var(--text)' : 'var(--text-muted)',
               fontWeight: tab === t.id ? 600 : 400,
             }}
           >
-            {t.label} ({t.count})
+            {t.label} <span className="opacity-60">{t.count}</span>
           </button>
         ))}
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => actions.setUi('bottomPanel', { open: !open, tab })}
+          aria-label={open ? 'Collapse panel' : 'Expand panel'}
+          title={open ? 'Collapse (⌘/)' : 'Expand (⌘/)'}
+          className="pgl-hover rounded p-1"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          {open ? <ChevronDown size={15} /> : <ChevronUp size={15} />}
+        </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto px-3 py-1.5">
-        {active.length === 0 ? (
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {tab === 'lint' ? 'No lint findings.' : 'No problems.'}
-          </span>
-        ) : (
-          active.map((d, i) => <DiagnosticRow key={`${d.code}-${i}`} d={d} i={i} />)
-        )}
-        {tab === 'diagnostics' && parseErrors.length > 0 && (
-          <div className="mt-1 text-xs" style={{ color: '#dc2626' }}>
-            Canvas shows the last valid schema while errors are present.
-          </div>
-        )}
-      </div>
+      {open && (
+        <div
+          className="overflow-auto px-3 py-1.5 text-[13px]"
+          style={{ height, borderTop: '1px solid var(--border)' }}
+        >
+          {active.length === 0 ? (
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              {tab === 'lint' ? 'No lint findings.' : 'No problems.'}
+            </span>
+          ) : (
+            active.map((d, i) => <DiagnosticRow key={`${d.code}-${i}`} d={d} i={i} />)
+          )}
+          {tab === 'diagnostics' && parseErrors.length > 0 && (
+            <div className="mt-1 text-xs" style={{ color: '#dc2626' }}>
+              Canvas shows the last valid schema while errors are present.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-const SAMPLES: { id: string; label: string }[] = [
-  { id: 'ecommerce', label: 'Ecommerce' },
-  { id: 'saas', label: 'SaaS multi-tenant' },
-  { id: 'northwind', label: 'Northwind' },
+const SAMPLES: { id: string; label: string; desc: string }[] = [
+  { id: 'ecommerce', label: 'Ecommerce', desc: 'Orders, products & inventory' },
+  { id: 'saas', label: 'SaaS multi-tenant', desc: 'Orgs, members & billing' },
+  { id: 'northwind', label: 'Northwind', desc: 'The classic demo schema' },
 ];
 
 function EmptyState() {
@@ -739,56 +932,101 @@ function EmptyState() {
       // ignore — offline/dev without the file
     }
   };
+  const ActionCard = ({
+    title,
+    desc,
+    onClick,
+    primary,
+  }: {
+    title: string;
+    desc: string;
+    onClick: () => void;
+    primary?: boolean;
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-44 flex-col gap-1 rounded-xl border p-4 text-left transition-all hover:-translate-y-0.5"
+      style={{
+        borderColor: primary ? 'var(--accent)' : 'var(--border)',
+        background: 'var(--bg-elevated)',
+        boxShadow: 'var(--shadow-sm)',
+      }}
+    >
+      <span
+        className="text-sm font-semibold"
+        style={{ color: primary ? 'var(--accent)' : 'var(--text)' }}
+      >
+        {title}
+      </span>
+      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+        {desc}
+      </span>
+    </button>
+  );
+
   return (
     <div
-      className="flex min-h-0 flex-1 items-center justify-center"
+      className="flex min-h-0 flex-1 items-center justify-center p-6"
       style={{ background: 'var(--canvas-bg)' }}
     >
-      <div className="max-w-md text-center">
+      <div className="w-full max-w-lg text-center">
         <Database
-          size={40}
-          className="mx-auto mb-3 opacity-40"
+          size={44}
+          className="mx-auto mb-4 opacity-30"
           style={{ color: 'var(--text-muted)' }}
         />
-        <p className="mb-1 font-medium" style={{ color: 'var(--text)' }}>
-          Start designing
+        <h1 className="mb-1 text-xl font-semibold" style={{ color: 'var(--text)' }}>
+          Design a Postgres schema
+        </h1>
+        <p className="mb-6 text-sm" style={{ color: 'var(--text-muted)' }}>
+          Start from scratch, bring your own SQL, or open a sample. Press{' '}
+          <kbd
+            className="mono rounded px-1.5 py-0.5 text-[11px]"
+            style={{ background: 'var(--bg-hover)' }}
+          >
+            ⌘K
+          </kbd>{' '}
+          any time for the command palette.
         </p>
-        <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Create a table from scratch, import existing SQL, or open a sample schema. Press{' '}
-          <kbd className="mono">⌘K</kbd> any time for the command palette.
-        </p>
-        <div className="mb-3 flex justify-center gap-2">
-          <button
-            type="button"
+        <div className="mb-6 flex flex-wrap justify-center gap-3">
+          <ActionCard
+            title="New table"
+            desc="Start with a blank canvas"
             onClick={() => actions.addTable()}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-white transition-transform active:scale-[0.98]"
-            style={{ background: 'var(--accent)' }}
-          >
-            New table
-          </button>
-          <button
-            type="button"
+            primary
+          />
+          <ActionCard
+            title="Import SQL"
+            desc="Paste a pg_dump or DDL"
             onClick={() => setDialog('import')}
-            className="rounded-md border px-3 py-1.5 text-sm transition-transform active:scale-[0.98]"
-            style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
-          >
-            Import SQL
-          </button>
+          />
         </div>
         <div
-          className="flex flex-wrap justify-center gap-2 text-xs"
+          className="mb-2 text-[11px] font-semibold uppercase tracking-wider"
           style={{ color: 'var(--text-muted)' }}
         >
-          <span className="self-center">Samples:</span>
+          Sample schemas
+        </div>
+        <div className="flex flex-wrap justify-center gap-3">
           {SAMPLES.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => loadSample(s.id)}
-              className="rounded-md border px-2.5 py-1 transition-transform hover:opacity-80 active:scale-[0.98]"
-              style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+              className="flex w-44 flex-col gap-0.5 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5"
+              style={{
+                borderColor: 'var(--border)',
+                background: 'var(--bg-elevated)',
+                boxShadow: 'var(--shadow-sm)',
+              }}
             >
-              {s.label}
+              <span className="text-[13px] font-medium" style={{ color: 'var(--text)' }}>
+                {s.label}
+              </span>
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                {s.desc}
+              </span>
             </button>
           ))}
         </div>

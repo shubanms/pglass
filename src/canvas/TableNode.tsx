@@ -19,6 +19,8 @@ export function TableNode({
   table,
   selected,
   lod,
+  compact = false,
+  dimmed = false,
   offset,
   renaming,
   linkable,
@@ -28,6 +30,10 @@ export function TableNode({
   table: Table;
   selected: boolean;
   lod: boolean;
+  /** compact mode — show only PK columns + a "… more" row */
+  compact?: boolean;
+  /** dimmed in focus mode (not part of the spotlighted selection) */
+  dimmed?: boolean;
   /** transient drag offset (not yet committed to the model) */
   offset?: { x: number; y: number };
   renaming: boolean;
@@ -35,7 +41,7 @@ export function TableNode({
   linkable: boolean;
   on: TableHandlers;
 }) {
-  const { w, h } = tableSize(table);
+  const { w, h } = tableSize(table, compact);
   const accent = table.color ?? 'var(--accent)';
   const pkSet = new Set(table.primaryKey);
   const fkSet = fkColumnIds(schema, table.id);
@@ -43,6 +49,8 @@ export function TableNode({
   const x = table.pos.x + (offset?.x ?? 0);
   const y = table.pos.y + (offset?.y ?? 0);
   const dragging = !!offset && (offset.x !== 0 || offset.y !== 0);
+  const shownColumns = compact ? table.columns.filter((c) => pkSet.has(c.id)) : table.columns;
+  const hiddenCount = table.columns.length - shownColumns.length;
 
   const outline = selected
     ? 'var(--accent)'
@@ -56,12 +64,12 @@ export function TableNode({
         transform={`translate(${x} ${y})`}
         onPointerDown={(e) => on.onHeaderPointerDown(e, table.id)}
         onContextMenu={(e) => on.onContextMenu(e, table.id)}
-        style={{ cursor: 'grab' }}
+        style={{ cursor: 'grab', opacity: dimmed ? 0.22 : 1 }}
       >
         <rect
           width={w}
           height={h}
-          rx={6}
+          rx={8}
           fill="var(--bg-elevated)"
           stroke={outline}
           strokeWidth={selected ? 2 : 1}
@@ -92,13 +100,14 @@ export function TableNode({
       style={{
         filter:
           dragging || (hover && !linkable) ? 'drop-shadow(0 6px 16px rgba(0,0,0,0.18))' : 'none',
-        transition: dragging ? 'none' : 'filter 120ms ease',
+        opacity: dimmed ? 0.22 : 1,
+        transition: dragging ? 'none' : 'filter 120ms ease, opacity 150ms ease',
       }}
     >
       <rect
         width={w}
         height={h}
-        rx={6}
+        rx={8}
         fill="var(--bg-elevated)"
         stroke={outline}
         strokeWidth={selected ? 2 : 1}
@@ -129,7 +138,7 @@ export function TableNode({
       </foreignObject>
 
       {!table.collapsed &&
-        table.columns.map((col, i) => {
+        shownColumns.map((col, i) => {
           const rowY = HEADER_H + i * ROW_H;
           const isPk = pkSet.has(col.id);
           const isFk = fkSet.has(col.id);
@@ -179,6 +188,17 @@ export function TableNode({
             </g>
           );
         })}
+
+      {!table.collapsed && hiddenCount > 0 && (
+        <foreignObject x={0} y={HEADER_H + shownColumns.length * ROW_H} width={w} height={ROW_H}>
+          <div
+            className="flex h-full items-center px-2.5 text-[11px] italic"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            … {hiddenCount} more
+          </div>
+        </foreignObject>
+      )}
     </g>
   );
 }

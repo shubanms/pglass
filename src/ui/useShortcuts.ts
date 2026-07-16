@@ -88,6 +88,8 @@ export function useShortcuts(h: ShortcutHandlers) {
       } else if (!meta && (e.key === 't' || e.key === 'T') && !e.shiftKey) {
         actions.addTable();
       } else if (!meta && e.key === 'F' && e.shiftKey) {
+        // spotlight the selection: enable focus mode and fit to it
+        if (!ui.focusMode) actions.toggleUi('focusMode');
         actions.focusSelection();
       }
     };

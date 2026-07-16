@@ -1,25 +1,30 @@
 // The SVG canvas root: pan/zoom, virtualization, LOD, and (Phase 5) editing —
 // drag tables, drag-a-port to create an FK, inline rename, context menu, and
 // double-click-to-create. See PRD §12.
+import { Maximize2, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnId, RefAction, TableId } from '../model/types.ts';
 import { useStore } from '../store/index.ts';
 import { Edge } from './Edge.tsx';
+import { Minimap } from './Minimap.tsx';
 import { TableContextMenu } from './TableContextMenu.tsx';
 import { TableNode } from './TableNode.tsx';
+import { ViewOptions } from './ViewOptions.tsx';
 import type { Box } from './geometry.ts';
-import { columnPortY, contentBounds, tableBox, tablesInView } from './geometry.ts';
+import { columnPortY, contentBounds, tableBox, tablesInRect, tablesInView } from './geometry.ts';
 
 const LOD_ZOOM = 0.4;
 
 interface Gesture {
-  kind: 'pan' | 'drag' | 'link';
+  kind: 'pan' | 'drag' | 'link' | 'marquee';
   startClient: { x: number; y: number };
   startViewport?: { x: number; y: number };
   ids?: TableId[];
   startWorld?: { x: number; y: number };
   fromTable?: TableId;
   fromCol?: ColumnId;
+  additive?: boolean;
+  baseSelection?: TableId[];
   moved?: boolean;
 }
 
@@ -41,6 +46,9 @@ export function Canvas() {
   } | null>(null);
   const [renaming, setRenaming] = useState<TableId | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; id: TableId } | null>(null);
+  const [marquee, setMarquee] = useState<Box | null>(null);
+  const spaceHeld = useRef(false);
+  const focusActive = ui.focusMode && selection.tables.size > 0;
 
   useEffect(() => {
     if (!ref.current) return;
@@ -93,6 +101,17 @@ export function Canvas() {
       } else if (g.kind === 'link') {
         const w = toWorld(e.clientX, e.clientY);
         setLink((prev) => (prev ? { ...prev, to: w } : prev));
+      } else if (g.kind === 'marquee' && g.startWorld) {
+        const w = toWorld(e.clientX, e.clientY);
+        const rect: Box = {
+          x: g.startWorld.x,
+          y: g.startWorld.y,
+          w: w.x - g.startWorld.x,
+          h: w.y - g.startWorld.y,
+        };
+        setMarquee(rect);
+        const hits = tablesInRect(schema, rect);
+        actions.setSelectedTables(g.additive ? [...(g.baseSelection ?? []), ...hits] : hits);
       }
     };
     const onUp = (e: PointerEvent) => {
@@ -123,6 +142,10 @@ export function Canvas() {
           createFk(g.fromTable, g.fromCol, dropTable, dropCol);
         }
         setLink(null);
+      } else if (g.kind === 'marquee') {
+        // a plain click (no drag) on empty space clears the selection
+        if (!g.moved && !g.additive) actions.clearSelection();
+        setMarquee(null);
       }
     };
     window.addEventListener('pointermove', onMove);
@@ -196,12 +219,22 @@ export function Canvas() {
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0 && e.button !== 1) return;
     setMenu(null);
-    actions.clearSelection();
     const v = useStore.getState().viewport;
+    // middle-mouse or held space → pan; plain left-drag → marquee select
+    if (e.button === 1 || spaceHeld.current) {
+      gesture.current = {
+        kind: 'pan',
+        startClient: { x: e.clientX, y: e.clientY },
+        startViewport: { x: v.x, y: v.y },
+      };
+      return;
+    }
     gesture.current = {
-      kind: 'pan',
+      kind: 'marquee',
       startClient: { x: e.clientX, y: e.clientY },
-      startViewport: { x: v.x, y: v.y },
+      startWorld: toWorld(e.clientX, e.clientY),
+      additive: e.shiftKey,
+      baseSelection: e.shiftKey ? [...useStore.getState().selection.tables] : [],
     };
   };
 
@@ -245,6 +278,22 @@ export function Canvas() {
       y: size.h / 2 - (b.y + b.h / 2) * zoom,
     });
   }, [schema, size, actions]);
+
+  /** Zoom by a multiplicative factor about the canvas centre. */
+  const zoomBy = useCallback(
+    (factor: number) => {
+      const { x, y, zoom } = useStore.getState().viewport;
+      const nz = Math.min(4, Math.max(0.1, zoom * factor));
+      const cx = size.w / 2;
+      const cy = size.h / 2;
+      actions.setViewport({
+        zoom: nz,
+        x: cx - ((cx - x) / zoom) * nz,
+        y: cy - ((cy - y) / zoom) * nz,
+      });
+    },
+    [size, actions],
+  );
 
   const fitNonce = useStore((s) => s.fitNonce);
   // biome-ignore lint/correctness/useExhaustiveDependencies: fit only when nonce bumps
@@ -299,16 +348,17 @@ export function Canvas() {
     });
   }, [reveal?.nonce]);
 
-  // keyboard: F fit, 1 100%, Delete removes selection
+  // keyboard: F fit, 1 100%, Delete removes selection, Space = pan modifier
   useEffect(() => {
+    const typing = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.isContentEditable || !!t.closest('.cm-editor') || t.tagName === 'INPUT');
     const onKey = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLElement &&
-        (e.target.isContentEditable ||
-          e.target.closest('.cm-editor') ||
-          e.target.tagName === 'INPUT')
-      )
+      if (e.key === ' ' && !typing(e.target)) {
+        spaceHeld.current = true;
         return;
+      }
+      if (typing(e.target)) return;
       if ((e.key === 'f' || e.key === 'F') && !e.shiftKey) zoomToFit();
       if (e.key === '1') actions.setViewport({ zoom: 1 });
       if (e.key === 'Escape') {
@@ -319,8 +369,15 @@ export function Canvas() {
         actions.deleteTables([...selection.tables]);
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') spaceHeld.current = false;
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+    };
   }, [zoomToFit, actions, selection.tables]);
 
   const dragOffsetFor = (id: TableId): { x: number; y: number } | undefined =>
@@ -387,7 +444,18 @@ export function Canvas() {
           <g className="edges" style={{ ['--edge' as string]: 'var(--text-muted)' }}>
             {schema.relationships.map((rel) =>
               visibleIds.has(rel.sourceTable) || visibleIds.has(rel.targetTable) ? (
-                <Edge key={rel.id} schema={schema} rel={rel} style={ui.edgeStyle} />
+                <Edge
+                  key={rel.id}
+                  schema={schema}
+                  rel={rel}
+                  style={ui.edgeStyle}
+                  compact={ui.compactColumns}
+                  dimmed={
+                    focusActive &&
+                    !selection.tables.has(rel.sourceTable) &&
+                    !selection.tables.has(rel.targetTable)
+                  }
+                />
               ) : null,
             )}
           </g>
@@ -411,6 +479,8 @@ export function Canvas() {
                 table={table}
                 selected={selection.tables.has(table.id)}
                 lod={lod}
+                compact={ui.compactColumns}
+                dimmed={focusActive && !selection.tables.has(table.id)}
                 offset={dragOffsetFor(table.id)}
                 renaming={renaming === table.id}
                 linkable={!!link}
@@ -418,6 +488,20 @@ export function Canvas() {
               />
             ))}
           </g>
+
+          {/* marquee selection rectangle */}
+          {marquee && (
+            <rect
+              x={Math.min(marquee.x, marquee.x + marquee.w)}
+              y={Math.min(marquee.y, marquee.y + marquee.h)}
+              width={Math.abs(marquee.w)}
+              height={Math.abs(marquee.h)}
+              fill="var(--accent-soft)"
+              stroke="var(--accent)"
+              strokeWidth={1 / viewport.zoom}
+              strokeDasharray={`${4 / viewport.zoom} ${3 / viewport.zoom}`}
+            />
+          )}
         </g>
       </svg>
 
@@ -434,20 +518,62 @@ export function Canvas() {
         />
       )}
 
+      {ui.showMinimap && <Minimap screenW={size.w} screenH={size.h} />}
+
+      {/* zoom + view controls */}
       <div
-        className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border px-2 py-1 text-xs"
+        className="absolute bottom-3 right-3 flex items-center gap-0.5 rounded-lg border p-1"
         style={{
           borderColor: 'var(--border)',
           background: 'var(--bg-elevated)',
           color: 'var(--text-muted)',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
-        <button type="button" onClick={zoomToFit} className="hover:opacity-80">
-          Fit
+        <ZoomBtn onClick={() => zoomBy(1 / 1.2)} label="Zoom out">
+          <Minus size={15} />
+        </ZoomBtn>
+        <button
+          type="button"
+          onClick={() => actions.setViewport({ zoom: 1 })}
+          title="Reset zoom (1)"
+          className="pgl-hover w-12 rounded-md py-1 text-center text-xs tabular-nums"
+          style={{ color: 'var(--text)' }}
+        >
+          {Math.round(viewport.zoom * 100)}%
         </button>
-        <span>·</span>
-        <span>{Math.round(viewport.zoom * 100)}%</span>
+        <ZoomBtn onClick={() => zoomBy(1.2)} label="Zoom in">
+          <Plus size={15} />
+        </ZoomBtn>
+        <ZoomBtn onClick={zoomToFit} label="Zoom to fit (F)">
+          <Maximize2 size={14} />
+        </ZoomBtn>
+        <div className="mx-0.5 h-5 w-px" style={{ background: 'var(--border)' }} />
+        <ViewOptions />
       </div>
     </div>
+  );
+}
+
+function ZoomBtn({
+  onClick,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="pgl-hover rounded-md p-1.5"
+      style={{ color: 'var(--text)' }}
+    >
+      {children}
+    </button>
   );
 }

@@ -7,13 +7,17 @@ export function Edge({
   rel,
   style,
   highlighted,
+  dimmed,
+  compact,
 }: {
   schema: Schema;
   rel: Relationship;
   style: 'orthogonal' | 'bezier' | 'straight';
   highlighted?: boolean;
+  dimmed?: boolean;
+  compact?: boolean;
 }) {
-  const geo = routeEdge(schema, rel, style);
+  const geo = routeEdge(schema, rel, style, compact);
   if (!geo) return null;
   const color = rel.color ?? (highlighted ? 'var(--accent)' : 'var(--edge)');
   const cascade = rel.onDelete === 'cascade';
@@ -23,7 +27,10 @@ export function Edge({
   const midY = (geo.source.y + geo.target.y) / 2;
 
   return (
-    <g className="pgl-edge">
+    <g
+      className="pgl-edge"
+      style={{ opacity: dimmed ? 0.18 : 1, transition: 'opacity 150ms ease' }}
+    >
       <path d={geo.path} fill="none" stroke={color} strokeWidth={highlighted ? 2 : 1.5} />
       <CrowFoot {...geo.source} color={color} />
       <CrowFoot {...geo.target} color={color} />
