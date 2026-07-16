@@ -9,6 +9,7 @@ import { temporal } from 'zundo';
 import { create } from 'zustand';
 import { parse } from '../dsl/parser.ts';
 import { print } from '../dsl/printer.ts';
+import { type LayoutAlgo, autoLayout } from '../layout/auto-layout.ts';
 import { gridLayout, needsLayout } from '../layout/grid.ts';
 import { newColumnId, newTableId } from '../model/ids.ts';
 import { emptySchema } from '../model/schema.ts';
@@ -60,6 +61,8 @@ export interface AppState {
   diagnostics: Diagnostic[];
   /** true when text has errors and the canvas is showing a stale model */
   stale: boolean;
+  /** bumped to ask the canvas to zoom-to-fit (after layout / load) */
+  fitNonce: number;
 
   viewport: { x: number; y: number; zoom: number };
   selection: Selection;
@@ -86,6 +89,7 @@ export interface Actions {
 
   importSqlText(sql: string): Diagnostic[];
   applyFix(d: Diagnostic): void;
+  autoLayout(algo: LayoutAlgo, selectionOnly?: boolean): Promise<void>;
 
   selectTable(id: TableId, additive?: boolean): void;
   clearSelection(): void;
@@ -142,6 +146,7 @@ export const useStore = create<AppState>()(
         dirtySource: null,
         diagnostics: [],
         stale: false,
+        fitNonce: 0,
 
         viewport: { x: 0, y: 0, zoom: 1 },
         selection: { tables: new Set(), columns: new Set(), rels: new Set() },
@@ -188,13 +193,14 @@ export const useStore = create<AppState>()(
             const text = print(rawSchema);
             const schema = needsLayout(rawSchema) ? gridLayout(rawSchema) : rawSchema;
             lastPrinted = text;
-            set({
+            set((st) => ({
               schema,
               dslText: text,
               diagnostics: [],
               dirtySource: null,
               stale: false,
-            });
+              fitNonce: st.fitNonce + 1,
+            }));
           },
 
           addTable(partial) {
@@ -324,6 +330,21 @@ export const useStore = create<AppState>()(
             const next = d.fix.apply(get().schema);
             set({ schema: next, dirtySource: 'model' });
             reprint();
+          },
+
+          async autoLayout(algo, selectionOnly) {
+            const state = get();
+            const only =
+              selectionOnly && state.selection.tables.size > 0 ? state.selection.tables : undefined;
+            const positions = await autoLayout(state.schema, algo, only);
+            if (positions.size === 0) return;
+            mutate((s) => {
+              for (const t of s.tables) {
+                const p = positions.get(t.id);
+                if (p) t.pos = p;
+              }
+            });
+            set((st) => ({ fitNonce: st.fitNonce + 1 }));
           },
 
           selectTable(id, additive) {

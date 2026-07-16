@@ -123,7 +123,7 @@ function TopBar() {
         label="Diff"
         onClick={() => setDialog('diff')}
       />
-      <ToolbarButton icon={<LayoutGrid size={15} />} label="Layout" disabled />
+      <LayoutMenu />
       <button
         type="button"
         onClick={() => actions.setUi('editorPane', editorPane === 'hidden' ? 'split' : 'hidden')}
@@ -169,6 +169,80 @@ function ToolbarButton({
       {icon}
       {label}
     </button>
+  );
+}
+
+function LayoutMenu() {
+  const actions = useStore((s) => s.actions);
+  const hasTables = useStore((s) => s.schema.tables.length > 0);
+  const hasSelection = useStore((s) => s.selection.tables.size > 0);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const run = async (algo: 'layered' | 'force' | 'radial', selectionOnly = false) => {
+    setOpen(false);
+    setBusy(true);
+    try {
+      await actions.autoLayout(algo, selectionOnly);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const items: { label: string; algo: 'layered' | 'force' | 'radial'; sel?: boolean }[] = [
+    { label: 'Layered (hierarchical)', algo: 'layered' },
+    { label: 'Force (interconnected)', algo: 'force' },
+    { label: 'Radial', algo: 'radial' },
+  ];
+
+  return (
+    <div className="relative">
+      <ToolbarButton
+        icon={<LayoutGrid size={15} />}
+        label={busy ? 'Laying out…' : 'Layout'}
+        onClick={() => hasTables && setOpen((o) => !o)}
+        disabled={!hasTables || busy}
+      />
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 cursor-default"
+            aria-label="Close menu"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="absolute right-0 z-50 mt-1 w-56 rounded-md border py-1 shadow-lg"
+            style={{ borderColor: 'var(--border)', background: 'var(--bg-elevated)' }}
+          >
+            {items.map((it) => (
+              <button
+                key={it.algo}
+                type="button"
+                onClick={() => run(it.algo)}
+                className="block w-full px-3 py-1.5 text-left text-sm hover:opacity-80"
+                style={{ color: 'var(--text)' }}
+              >
+                {it.label}
+              </button>
+            ))}
+            {hasSelection && (
+              <>
+                <div className="my-1 border-t" style={{ borderColor: 'var(--border)' }} />
+                <button
+                  type="button"
+                  onClick={() => run('layered', true)}
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:opacity-80"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  Layout selection only
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

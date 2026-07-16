@@ -41,8 +41,10 @@ Under active construction, built in the phases described in the PRD (§18):
       with sensible defaults — plus one-click auto-fixes (add PK, index the FK,
       varchar→text, timestamp→timestamptz, drop redundant index, enable RLS…). Tabbed
       Lint panel with Fix buttons.
-- [ ] Phases 4/5/8/9/13/14 — canvas editing (drag-to-FK), elkjs auto-layout,
-      persistence, and polish.
+- [x] **Phase 8** — Auto-layout: elkjs (layered / force / radial), selection-only
+      layout, and zoom-to-fit — code-split so elkjs loads on demand. Replaces the grid
+      stopgap; wired to the Layout menu.
+- [ ] Phases 4/5/9/13/14 — canvas editing (drag-to-FK), persistence, and polish.
 
 ### The `.pgl` DSL
 

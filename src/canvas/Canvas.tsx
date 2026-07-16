@@ -103,6 +103,13 @@ export function Canvas() {
     });
   }, [schema, size, actions]);
 
+  // zoom-to-fit whenever the store requests it (after layout / schema load)
+  const fitNonce = useStore((s) => s.fitNonce);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fit only when nonce bumps
+  useEffect(() => {
+    if (fitNonce > 0 && size.w > 1) zoomToFit();
+  }, [fitNonce]);
+
   // keyboard: F = fit, 1 = 100%
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
