@@ -1,0 +1,790 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generators — golden snapshots > DBML output is stable 1`] = `
+"Project "Acme Store" {
+  database_type: 'PostgreSQL'
+  Note: 'Order + inventory schema'
+}
+
+Enum order_status {
+  "pending"
+  "paid"
+  "shipped"
+  "cancelled"
+}
+
+Table users {
+  id uuid [pk, not null, default: \`gen_random_uuid()\`]
+  email citext [not null, unique]
+  full_name varchar(120)
+  created_at timestamptz [not null, default: \`now()\`]
+  deleted_at timestamptz
+}
+
+Table products {
+  id bigint [pk, increment, not null]
+  sku citext [not null, unique]
+  name varchar(200) [not null]
+  price_cents integer [not null]
+}
+
+Table orders {
+  id bigint [pk, increment, not null]
+  user_id uuid [not null]
+  status order_status [not null, default: 'pending']
+  total_cents integer [not null]
+  placed_at timestamptz [not null, default: \`now()\`]
+}
+
+Table order_items {
+  order_id bigint [not null]
+  product_id bigint [not null]
+  qty integer [not null, default: 1]
+  unit_cents integer [not null]
+
+  indexes {
+    (order_id, product_id) [pk]
+  }
+}
+
+Ref: orders.user_id > users.id
+Ref: order_items.order_id > orders.id
+Ref: order_items.product_id > products.id
+"
+`;
+
+exports[`generators — golden snapshots > Drizzle output is stable 1`] = `
+"import { bigint, bigserial, index, integer, pgEnum, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+
+export const orderStatusEnum = pgEnum('order_status', ['pending', 'paid', 'shipped', 'cancelled']);
+
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().default(sql\`gen_random_uuid()\`),
+  email: text('email').notNull().unique(),
+  fullName: varchar('full_name', { length: 120 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql\`now()\`),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+}, (t) => ({
+    usersEmailKey: uniqueIndex('users_email_key').on(t.email),
+    usersActiveRecent: index('users_active_recent').on(t.createdAt),
+}));
+
+export const products = pgTable('products', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  sku: text('sku').notNull().unique(),
+  name: varchar('name', { length: 200 }).notNull(),
+  priceCents: integer('price_cents').notNull(),
+});
+
+export const orders = pgTable('orders', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  status: orderStatusEnum('status').notNull().default('pending'),
+  totalCents: integer('total_cents').notNull(),
+  placedAt: timestamp('placed_at', { withTimezone: true }).notNull().default(sql\`now()\`),
+}, (t) => ({
+    ordersIdx: index('orders_idx').on(t.userId, t.placedAt),
+}));
+
+export const orderItems = pgTable('order_items', {
+  orderId: bigint('order_id', { mode: 'number' }).notNull().references(() => orders.id, { onDelete: 'cascade' }),
+  productId: bigint('product_id', { mode: 'number' }).notNull().references(() => products.id, { onDelete: 'restrict' }),
+  qty: integer('qty').notNull().default(1),
+  unitCents: integer('unit_cents').notNull(),
+}, (t) => ({
+    pk: primaryKey({ columns: [t.orderId, t.productId] }),
+}));
+"
+`;
+
+exports[`generators — golden snapshots > JSON Schema output is stable 1`] = `
+"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Acme Store",
+  "description": "Order + inventory schema",
+  "$defs": {
+    "users": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "email": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "deleted_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "email"
+      ]
+    },
+    "products": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "sku": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "price_cents": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "sku",
+        "name",
+        "price_cents"
+      ]
+    },
+    "orders": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "user_id": {
+          "type": "string",
+          "format": "uuid",
+          "$comment": "FK → users"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "paid",
+            "shipped",
+            "cancelled"
+          ]
+        },
+        "total_cents": {
+          "type": "integer"
+        },
+        "placed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "user_id",
+        "total_cents"
+      ]
+    },
+    "order_items": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "order_id": {
+          "type": "integer",
+          "$comment": "FK → orders"
+        },
+        "product_id": {
+          "type": "integer",
+          "$comment": "FK → products"
+        },
+        "qty": {
+          "type": "integer"
+        },
+        "unit_cents": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "order_id",
+        "product_id",
+        "unit_cents"
+      ]
+    }
+  }
+}
+"
+`;
+
+exports[`generators — golden snapshots > Markdown docs output is stable 1`] = `
+"# Acme Store
+
+Order + inventory schema
+
+## Overview
+
+\`\`\`mermaid
+erDiagram
+  users {
+    uuid id "PK"
+    citext email
+    varchar full_name
+    timestamptz created_at
+    timestamptz deleted_at
+  }
+  products {
+    bigint id "PK"
+    citext sku
+    varchar name
+    integer price_cents
+  }
+  orders {
+    bigint id "PK"
+    uuid user_id "FK"
+    order_status status
+    integer total_cents
+    timestamptz placed_at
+  }
+  order_items {
+    bigint order_id "PK,FK"
+    bigint product_id "PK,FK"
+    integer qty
+    integer unit_cents
+  }
+  users ||--o{ orders : "has_orders"
+  orders ||--o{ order_items : "has_order_items"
+  products ||--o{ order_items : "has_order_items"
+\`\`\`
+
+## Tables
+
+- [users](#users)
+- [products](#products)
+- [orders](#orders)
+- [order_items](#order-items)
+
+## Enums
+
+- **order_status**: pending, paid, shipped, cancelled
+
+## users
+
+Soft-deleted via deleted_at
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| 🔑 id | \`uuid\` | no | \`gen_random_uuid()\` |  |
+| email | \`citext\` | no |  |  |
+| full_name | \`varchar(120)\` | yes |  |  |
+| created_at | \`timestamptz\` | no | \`now()\` |  |
+| deleted_at | \`timestamptz\` | yes |  |  |
+
+**Relationships**
+
+- ← [orders](#orders) references this table
+
+**Indexes**
+
+- \`users_email_key\` (email) — unique
+- \`users_active_recent\` (created_at)
+- \`(unnamed)\` (lower(full_name)) — gin
+
+## products
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| 🔑 id | \`bigint\` | no |  |  |
+| sku | \`citext\` | no |  |  |
+| name | \`varchar(200)\` | no |  |  |
+| price_cents | \`integer\` | no |  |  |
+
+**Relationships**
+
+- ← [order_items](#order-items) references this table
+
+## orders
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| 🔑 id | \`bigint\` | no |  |  |
+| 🔗 user_id | \`uuid\` | no |  |  |
+| status | \`order_status\` | no | \`'pending'\` |  |
+| total_cents | \`integer\` | no |  |  |
+| placed_at | \`timestamptz\` | no | \`now()\` |  |
+
+**Relationships**
+
+- \`user_id\` → [users](#users) (on delete cascade)
+- ← [order_items](#order-items) references this table
+
+**Indexes**
+
+- \`(unnamed)\` (user_id, placed_at)
+
+## order_items
+
+| Column | Type | Null | Default | Description |
+|---|---|---|---|---|
+| 🔑🔗 order_id | \`bigint\` | no |  |  |
+| 🔑🔗 product_id | \`bigint\` | no |  |  |
+| qty | \`integer\` | no | \`1\` |  |
+| unit_cents | \`integer\` | no |  |  |
+
+**Relationships**
+
+- \`order_id\` → [orders](#orders) (on delete cascade)
+- \`product_id\` → [products](#products) (on delete restrict)
+"
+`;
+
+exports[`generators — golden snapshots > Mermaid output is stable 1`] = `
+"erDiagram
+  users {
+    uuid id "PK"
+    citext email
+    varchar full_name
+    timestamptz created_at
+    timestamptz deleted_at
+  }
+  products {
+    bigint id "PK"
+    citext sku
+    varchar name
+    integer price_cents
+  }
+  orders {
+    bigint id "PK"
+    uuid user_id "FK"
+    order_status status
+    integer total_cents
+    timestamptz placed_at
+  }
+  order_items {
+    bigint order_id "PK,FK"
+    bigint product_id "PK,FK"
+    integer qty
+    integer unit_cents
+  }
+  users ||--o{ orders : "has_orders"
+  orders ||--o{ order_items : "has_order_items"
+  products ||--o{ order_items : "has_order_items"
+"
+`;
+
+exports[`generators — golden snapshots > PlantUML output is stable 1`] = `
+"@startuml
+hide circle
+skinparam linetype ortho
+
+entity "users" as users {
+  * id : uuid <<PK>>
+  --
+  * email : citext
+    full_name : varchar(120)
+  * created_at : timestamptz
+    deleted_at : timestamptz
+}
+
+entity "products" as products {
+  * id : bigint <<PK>>
+  --
+  * sku : citext
+  * name : varchar(200)
+  * price_cents : integer
+}
+
+entity "orders" as orders {
+  * id : bigint <<PK>>
+  --
+  * user_id : uuid <<FK>>
+  * status : order_status
+  * total_cents : integer
+  * placed_at : timestamptz
+}
+
+entity "order_items" as order_items {
+  * order_id : bigint <<PK>>
+  * product_id : bigint <<PK>>
+  --
+  * qty : integer
+  * unit_cents : integer
+}
+
+users ||--o{ orders
+orders ||--o{ order_items
+products ||--o{ order_items
+@enduml
+"
+`;
+
+exports[`generators — golden snapshots > Postgres DDL output is stable 1`] = `
+"CREATE TYPE order_status AS ENUM ('pending', 'paid', 'shipped', 'cancelled');
+
+CREATE TABLE users (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  email citext NOT NULL UNIQUE,
+  full_name varchar(120),
+  created_at timestamptz DEFAULT now() NOT NULL,
+  deleted_at timestamptz,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE products (
+  id bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL,
+  sku citext NOT NULL UNIQUE,
+  name varchar(200) NOT NULL,
+  price_cents integer NOT NULL CHECK (price_cents >= 0),
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE orders (
+  id bigint GENERATED BY DEFAULT AS IDENTITY NOT NULL,
+  user_id uuid NOT NULL,
+  status order_status DEFAULT 'pending' NOT NULL,
+  total_cents integer NOT NULL CHECK (total_cents >= 0),
+  placed_at timestamptz DEFAULT now() NOT NULL,
+  PRIMARY KEY (id)
+);
+
+CREATE TABLE order_items (
+  order_id bigint NOT NULL,
+  product_id bigint NOT NULL,
+  qty integer DEFAULT 1 NOT NULL,
+  unit_cents integer NOT NULL,
+  PRIMARY KEY (order_id, product_id),
+  CONSTRAINT order_items_qty_positive CHECK (qty > 0)
+);
+
+CREATE UNIQUE INDEX users_email_key ON users (email);
+CREATE INDEX users_active_recent ON users (created_at DESC) WHERE deleted_at is null;
+CREATE INDEX users_idx ON users USING gin ((lower(full_name)));
+CREATE INDEX orders_idx ON orders (user_id, placed_at DESC);
+
+ALTER TABLE orders ADD CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE;
+ALTER TABLE order_items ADD CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE;
+ALTER TABLE order_items ADD CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES products (id) ON DELETE RESTRICT;
+
+COMMENT ON TABLE users IS 'Soft-deleted via deleted_at';
+"
+`;
+
+exports[`generators — golden snapshots > Prisma output is stable 1`] = `
+"datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum OrderStatus {
+  pending
+  paid
+  shipped
+  cancelled
+}
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()"))
+  email String @unique
+  fullName String? @map("full_name")
+  createdAt DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
+  orders Order[]
+  @@unique([email])
+  @@index([createdAt])
+}
+
+model Product {
+  id BigInt @id @default(autoincrement())
+  sku String @unique
+  name String
+  priceCents Int @map("price_cents")
+  orderItems OrderItem[]
+}
+
+model Order {
+  id BigInt @id @default(autoincrement())
+  userId String @map("user_id")
+  status OrderStatus @default(pending)
+  totalCents Int @map("total_cents")
+  placedAt DateTime @default(now()) @map("placed_at")
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  @@index([userId, placedAt])
+}
+
+model OrderItem {
+  orderId BigInt @map("order_id")
+  productId BigInt @map("product_id")
+  qty Int @default(1)
+  unitCents Int @map("unit_cents")
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  @@id([orderId, productId])
+  @@map("order_items")
+}
+"
+`;
+
+exports[`generators — golden snapshots > SQLAlchemy output is stable 1`] = `
+"from __future__ import annotations
+from datetime import date, datetime
+from decimal import Decimal
+import enum
+import uuid
+from sqlalchemy import (BigInteger, Boolean, Date, DateTime, Enum as SAEnum, Float,
+    ForeignKey, Integer, Numeric, SmallInteger, String, Text, Index, CheckConstraint)
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID as PgUUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class OrderStatus(enum.Enum):
+    pending = "pending"
+    paid = "paid"
+    shipped = "shipped"
+    cancelled = "cancelled"
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), primary_key=True)
+    email: Mapped[str] = mapped_column(Text, unique=True)
+    full_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    orders: Mapped[list["Order"]] = relationship(back_populates="user")
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    sku: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    price_cents: Mapped[int] = mapped_column(Integer)
+    orderItems: Mapped[list["OrderItem"]] = relationship(back_populates="product")
+
+
+class Order(Base):
+    __tablename__ = "orders"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[OrderStatus] = mapped_column(SAEnum(OrderStatus, name='order_status'))
+    total_cents: Mapped[int] = mapped_column(Integer)
+    placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    user: Mapped["User"] = relationship(back_populates="orders")
+    orderItems: Mapped[list["OrderItem"]] = relationship(back_populates="order")
+
+
+class OrderItem(Base):
+    __tablename__ = "order_items"
+
+    order_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("orders.id", ondelete="CASCADE"), primary_key=True)
+    product_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("products.id", ondelete="RESTRICT"), primary_key=True)
+    qty: Mapped[int] = mapped_column(Integer)
+    unit_cents: Mapped[int] = mapped_column(Integer)
+    order: Mapped["Order"] = relationship(back_populates="orderItems")
+    product: Mapped["Product"] = relationship(back_populates="orderItems")
+
+    __table_args__ = (CheckConstraint("qty > 0", name="order_items_qty_positive"),)
+"
+`;
+
+exports[`generators — golden snapshots > TypeORM output is stable 1`] = `
+"import { Entity, PrimaryColumn, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
+
+@Entity("users")
+export class User {
+  @PrimaryColumn({ type: 'uuid', default: () => "gen_random_uuid()" })
+  id!: string;
+
+  @Column({ type: 'citext', unique: true })
+  email!: string;
+
+  @Column({ type: 'varchar', nullable: true, name: "full_name" })
+  fullName!: string | null;
+
+  @Column({ type: 'timestamptz', default: () => "now()", name: "created_at" })
+  createdAt!: Date;
+
+  @Column({ type: 'timestamptz', nullable: true, name: "deleted_at" })
+  deletedAt!: Date | null;
+
+  @OneToMany(() => Order, (row) => row.user)
+  orders!: Order[];
+}
+
+@Entity("products")
+export class Product {
+  @PrimaryGeneratedColumn()
+  id!: string;
+
+  @Column({ type: 'citext', unique: true })
+  sku!: string;
+
+  @Column({ type: 'varchar' })
+  name!: string;
+
+  @Column({ type: 'int', name: "price_cents" })
+  priceCents!: number;
+
+  @OneToMany(() => OrderItem, (row) => row.product)
+  orderItems!: OrderItem[];
+}
+
+@Entity("orders")
+export class Order {
+  @PrimaryGeneratedColumn()
+  id!: string;
+
+  @Column({ type: 'uuid', name: "user_id" })
+  userId!: string;
+  
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: "user_id" })
+  user!: User;
+
+  @Column({ type: 'enum', enum: ["pending", "paid", "shipped", "cancelled"], default: 'pending' })
+  status!: "pending" | "paid" | "shipped" | "cancelled";
+
+  @Column({ type: 'int', name: "total_cents" })
+  totalCents!: number;
+
+  @Column({ type: 'timestamptz', default: () => "now()", name: "placed_at" })
+  placedAt!: Date;
+
+  @OneToMany(() => OrderItem, (row) => row.order)
+  orderItems!: OrderItem[];
+}
+
+@Entity("order_items")
+export class OrderItem {
+  @Column({ type: 'bigint', name: "order_id" })
+  orderId!: string;
+  
+  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: "order_id" })
+  order!: Order;
+
+  @Column({ type: 'bigint', name: "product_id" })
+  productId!: string;
+  
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: "product_id" })
+  product!: Product;
+
+  @Column({ type: 'int', default: 1 })
+  qty!: number;
+
+  @Column({ type: 'int', name: "unit_cents" })
+  unitCents!: number;
+}
+"
+`;
+
+exports[`generators — golden snapshots > TypeScript output is stable 1`] = `
+"// Generated by Pglass — plain interfaces + a Kysely Database type.
+
+export type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string | null;
+  created_at: Date;
+  deleted_at: Date | null;
+}
+
+export interface Product {
+  id: string;
+  sku: string;
+  name: string;
+  price_cents: number;
+}
+
+export interface Order {
+  id: string;
+  user_id: string;
+  status: "pending" | "paid" | "shipped" | "cancelled";
+  total_cents: number;
+  placed_at: Date;
+}
+
+export interface OrderItem {
+  order_id: string;
+  product_id: string;
+  qty: number;
+  unit_cents: number;
+}
+
+export interface Database {
+  users: User;
+  products: Product;
+  orders: Order;
+  order_items: OrderItem;
+}
+"
+`;
+
+exports[`generators — golden snapshots > Zod output is stable 1`] = `
+"import { z } from 'zod';
+
+export const orderStatusSchema = z.enum(["pending", "paid", "shipped", "cancelled"]);
+
+export const userSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string(),
+  full_name: z.string().nullable(),
+  created_at: z.coerce.date(),
+  deleted_at: z.coerce.date().nullable(),
+});
+export const userInsertSchema = userSchema.omit({ id: true, created_at: true });
+export type User = z.infer<typeof userSchema>;
+
+export const productSchema = z.object({
+  id: z.string(),
+  sku: z.string(),
+  name: z.string(),
+  price_cents: z.number(),
+});
+export const productInsertSchema = productSchema.omit({ id: true });
+export type Product = z.infer<typeof productSchema>;
+
+export const orderSchema = z.object({
+  id: z.string(),
+  user_id: z.string().uuid(),
+  status: orderStatusSchema,
+  total_cents: z.number(),
+  placed_at: z.coerce.date(),
+});
+export const orderInsertSchema = orderSchema.omit({ id: true, status: true, placed_at: true });
+export type Order = z.infer<typeof orderSchema>;
+
+export const orderItemSchema = z.object({
+  order_id: z.string(),
+  product_id: z.string(),
+  qty: z.number(),
+  unit_cents: z.number(),
+});
+export const orderItemInsertSchema = orderItemSchema.omit({ qty: true });
+export type OrderItem = z.infer<typeof orderItemSchema>;
+"
+`;

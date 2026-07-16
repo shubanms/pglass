@@ -150,6 +150,13 @@ class Parser {
     }
     this.resolveRefs();
     this.resolveGroups();
+    // A primary-key column is implicitly NOT NULL in Postgres.
+    for (const t of this.schema.tables) {
+      for (const cid of t.primaryKey) {
+        const c = t.columns.find((x) => x.id === cid);
+        if (c) c.notNull = true;
+      }
+    }
     return { schema: this.schema, diagnostics: this.diags };
   }
 

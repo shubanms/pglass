@@ -31,8 +31,20 @@ Under active construction, built in the phases described in the PRD (§18):
       changes (auto drop/re-add), enum value removal (additive vs recreate ambiguity),
       renames (by-id / heuristic), and a `USING`-clause generator. Diff dialog with
       From/To pickers, toggleable ops, and copy/download.
-- [ ] Phases 4/5/8/9/11–14 — canvas editing (drag-to-FK), elkjs auto-layout,
-      persistence, linter, generators, and polish.
+- [x] **Phase 12** — Generators: one pure `(schema) => string` per target —
+      Postgres DDL, Prisma, Drizzle, SQLAlchemy 2.0, TypeORM, Zod, TypeScript,
+      Mermaid, PlantUML, DBML, Markdown data dictionary, JSON Schema, and FK-aware
+      faker seed data (dynamically imported to keep the main bundle lean). Unified
+      Generate/export dialog. Golden-file tests per generator.
+- [x] **Phase 11** — Linter: a rule engine with correctness (L001–L009), performance
+      (L101–L108), design (L201–L211), and security (L301–L303) rules — each toggleable
+      with sensible defaults — plus one-click auto-fixes (add PK, index the FK,
+      varchar→text, timestamp→timestamptz, drop redundant index, enable RLS…). Tabbed
+      Lint panel with Fix buttons.
+- [x] **Phase 8** — Auto-layout: elkjs (layered / force / radial), selection-only
+      layout, and zoom-to-fit — code-split so elkjs loads on demand. Replaces the grid
+      stopgap; wired to the Layout menu.
+- [ ] Phases 4/5/9/13/14 — canvas editing (drag-to-FK), persistence, and polish.
 
 ### The `.pgl` DSL
 
