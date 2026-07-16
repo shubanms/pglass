@@ -18,27 +18,50 @@ export interface Box {
   h: number;
 }
 
-export function tableSize(table: Table): { w: number; h: number } {
+/** In compact mode, only primary-key columns stay visible; the rest fold into a
+ *  single "… N more" row. Table-only (no schema) so geometry stays pure. */
+export function compactColumns(table: Table): { visible: typeof table.columns; hidden: number } {
+  const pk = new Set(table.primaryKey);
+  const visible = table.columns.filter((c) => pk.has(c.id));
+  return { visible, hidden: table.columns.length - visible.length };
+}
+
+function rowCount(table: Table, compact: boolean): number {
+  if (table.collapsed) return 0;
+  if (!compact) return table.columns.length;
+  const { visible, hidden } = compactColumns(table);
+  return visible.length + (hidden > 0 ? 1 : 0);
+}
+
+export function tableSize(table: Table, compact = false): { w: number; h: number } {
   if (table.size) return table.size;
   let widest = table.name.length + 4;
   for (const c of table.columns) {
     widest = Math.max(widest, c.name.length + typeStr(c.type).length + 3);
   }
   const w = Math.min(MAX_W, Math.max(MIN_W, Math.round(widest * CHAR_W + PADDING)));
-  const rows = table.collapsed ? 0 : table.columns.length;
-  const h = HEADER_H + rows * ROW_H;
+  const h = HEADER_H + rowCount(table, compact) * ROW_H;
   return { w, h };
 }
 
-export function tableBox(table: Table): Box {
-  const { w, h } = tableSize(table);
+export function tableBox(table: Table, compact = false): Box {
+  const { w, h } = tableSize(table, compact);
   return { x: table.pos.x, y: table.pos.y, w, h };
 }
 
-/** Y offset (world coords) of a column row's vertical centre. */
-export function columnPortY(table: Table, columnId: ColumnId): number {
-  const idx = table.columns.findIndex((c) => c.id === columnId);
-  if (idx < 0 || table.collapsed) return table.pos.y + HEADER_H / 2;
+/** Y offset (world coords) of a column row's vertical centre. In compact mode a
+ *  hidden column attaches to the "… more" row so its FK edge still lands sensibly. */
+export function columnPortY(table: Table, columnId: ColumnId, compact = false): number {
+  if (table.collapsed) return table.pos.y + HEADER_H / 2;
+  let idx: number;
+  if (!compact) {
+    idx = table.columns.findIndex((c) => c.id === columnId);
+  } else {
+    const { visible } = compactColumns(table);
+    const vi = visible.findIndex((c) => c.id === columnId);
+    idx = vi >= 0 ? vi : visible.length; // the "… more" row
+  }
+  if (idx < 0) return table.pos.y + HEADER_H / 2;
   return table.pos.y + HEADER_H + idx * ROW_H + ROW_H / 2;
 }
 
@@ -122,19 +145,20 @@ export function routeEdge(
   schema: Schema,
   rel: Relationship,
   style: 'orthogonal' | 'bezier' | 'straight' = 'orthogonal',
+  compact = false,
 ): EdgeGeometry | null {
   const src = schema.tables.find((t) => t.id === rel.sourceTable);
   const tgt = schema.tables.find((t) => t.id === rel.targetTable);
   if (!src || !tgt) return null;
 
-  const srcBox = tableBox(src);
-  const tgtBox = tableBox(tgt);
+  const srcBox = tableBox(src, compact);
+  const tgtBox = tableBox(tgt, compact);
   const card = cardinalities(schema, rel);
 
   // self-referencing FK: loop out the right and back (PRD §12.3)
   if (src.id === tgt.id) {
-    const y1 = columnPortY(src, rel.sourceColumns[0] ?? src.columns[0]!.id);
-    const y2 = columnPortY(tgt, rel.targetColumns[0] ?? tgt.columns[0]!.id);
+    const y1 = columnPortY(src, rel.sourceColumns[0] ?? src.columns[0]!.id, compact);
+    const y2 = columnPortY(tgt, rel.targetColumns[0] ?? tgt.columns[0]!.id, compact);
     const x = srcBox.x + srcBox.w;
     const out = x + 40;
     return {
@@ -146,9 +170,9 @@ export function routeEdge(
 
   const { srcSide, tgtSide } = chooseSides(srcBox, tgtBox);
   const sx = portX(srcBox, srcSide);
-  const sy = columnPortY(src, rel.sourceColumns[0] ?? src.columns[0]!.id);
+  const sy = columnPortY(src, rel.sourceColumns[0] ?? src.columns[0]!.id, compact);
   const tx = portX(tgtBox, tgtSide);
-  const ty = columnPortY(tgt, rel.targetColumns[0] ?? tgt.columns[0]!.id);
+  const ty = columnPortY(tgt, rel.targetColumns[0] ?? tgt.columns[0]!.id, compact);
 
   let path: string;
   if (style === 'straight') path = `M ${sx} ${sy} L ${tx} ${ty}`;
@@ -182,6 +206,22 @@ export function contentBounds(schema: Schema, margin = 40): Box {
     w: maxX - minX + margin * 2,
     h: maxY - minY + margin * 2,
   };
+}
+
+/** Ids of tables whose box intersects a world-space rectangle (marquee select).
+ *  The rect may be given with negative width/height (drag up/left); it's
+ *  normalised here. */
+export function tablesInRect(schema: Schema, rect: Box): TableId[] {
+  const x1 = Math.min(rect.x, rect.x + rect.w);
+  const y1 = Math.min(rect.y, rect.y + rect.h);
+  const x2 = Math.max(rect.x, rect.x + rect.w);
+  const y2 = Math.max(rect.y, rect.y + rect.h);
+  const out: TableId[] = [];
+  for (const t of schema.tables) {
+    const b = tableBox(t);
+    if (b.x < x2 && b.x + b.w > x1 && b.y < y2 && b.y + b.h > y1) out.push(t.id);
+  }
+  return out;
 }
 
 export function tablesInView(schema: Schema, view: Box, margin = 200): Table[] {

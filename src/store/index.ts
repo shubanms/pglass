@@ -33,6 +33,13 @@ export type EditorPane = 'hidden' | 'split' | 'full';
 export type Theme = 'light' | 'dark' | 'system' | 'presentation';
 export type EdgeStyle = 'orthogonal' | 'bezier' | 'straight';
 
+export interface PanelLayout {
+  leftWidth: number;
+  rightWidth: number;
+  editorWidth: number;
+  bottomHeight: number;
+}
+
 export interface UiState {
   leftPanel: boolean;
   rightPanel: boolean;
@@ -46,7 +53,16 @@ export interface UiState {
   edgeStyle: EdgeStyle;
   compactColumns: boolean;
   focusMode: boolean;
+  /** drag-resizable panel sizes in px (persisted to localStorage) */
+  layout: PanelLayout;
 }
+
+export const DEFAULT_LAYOUT: PanelLayout = {
+  leftWidth: 232,
+  rightWidth: 300,
+  editorWidth: 460,
+  bottomHeight: 190,
+};
 
 export interface Selection {
   tables: Set<TableId>;
@@ -97,6 +113,7 @@ export interface Actions {
   autoLayout(algo: LayoutAlgo, selectionOnly?: boolean): Promise<void>;
 
   selectTable(id: TableId, additive?: boolean): void;
+  setSelectedTables(ids: TableId[]): void;
   revealTable(id: TableId): void;
   selectAllTables(): void;
   duplicateSelection(): void;
@@ -107,6 +124,7 @@ export interface Actions {
   focusSelection(): void;
   toggleUi<K extends keyof UiState>(key: K): void;
   setUi<K extends keyof UiState>(key: K, value: UiState[K]): void;
+  setLayout(patch: Partial<PanelLayout>): void;
 
   undo(): void;
   redo(): void;
@@ -121,6 +139,55 @@ let lastPrinted = '';
 function initialSchema(): Schema {
   return emptySchema('untitled', NOW());
 }
+
+// UI preferences (theme, panel sizes, view toggles) persist to localStorage —
+// separate from schema autosave (Dexie). focusMode is deliberately transient.
+const UI_STORAGE_KEY = 'pglass:ui';
+const PERSISTED_UI_KEYS: (keyof UiState)[] = [
+  'leftPanel',
+  'rightPanel',
+  'bottomPanel',
+  'editorPane',
+  'theme',
+  'showGrid',
+  'snapToGrid',
+  'gridSize',
+  'showMinimap',
+  'edgeStyle',
+  'compactColumns',
+  'layout',
+];
+
+function loadPersistedUi(): Partial<UiState> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(UI_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Partial<UiState>;
+    if (parsed.layout) parsed.layout = { ...DEFAULT_LAYOUT, ...parsed.layout };
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+
+function savePersistedUi(ui: UiState): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const out: Record<string, unknown> = {};
+    for (const k of PERSISTED_UI_KEYS) out[k] = ui[k];
+    localStorage.setItem(UI_STORAGE_KEY, JSON.stringify(out));
+  } catch {
+    // storage full / unavailable — non-fatal
+  }
+}
+
+const clampLayout = (l: PanelLayout): PanelLayout => ({
+  leftWidth: Math.max(160, Math.min(440, l.leftWidth)),
+  rightWidth: Math.max(220, Math.min(520, l.rightWidth)),
+  editorWidth: Math.max(280, Math.min(900, l.editorWidth)),
+  bottomHeight: Math.max(80, Math.min(480, l.bottomHeight)),
+});
 
 export const useStore = create<AppState>()(
   temporal(
@@ -191,6 +258,9 @@ export const useStore = create<AppState>()(
           edgeStyle: 'orthogonal',
           compactColumns: false,
           focusMode: false,
+          layout: DEFAULT_LAYOUT,
+          // restore persisted preferences over the defaults above
+          ...loadPersistedUi(),
         },
 
         actions: {
@@ -397,6 +467,10 @@ export const useStore = create<AppState>()(
             });
           },
 
+          setSelectedTables(ids) {
+            set((state) => ({ selection: { ...state.selection, tables: new Set(ids) } }));
+          },
+
           revealTable(id) {
             set((state) => ({
               selection: { ...state.selection, tables: new Set([id]) },
@@ -440,10 +514,19 @@ export const useStore = create<AppState>()(
 
           toggleUi(key) {
             set((state) => ({ ui: { ...state.ui, [key]: !state.ui[key] } }));
+            savePersistedUi(get().ui);
           },
 
           setUi(key, value) {
             set((state) => ({ ui: { ...state.ui, [key]: value } }));
+            savePersistedUi(get().ui);
+          },
+
+          setLayout(patch) {
+            set((state) => ({
+              ui: { ...state.ui, layout: clampLayout({ ...state.ui.layout, ...patch }) },
+            }));
+            savePersistedUi(get().ui);
           },
 
           undo() {
