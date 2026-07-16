@@ -9,6 +9,7 @@ import { useEffect, useRef } from 'react';
 import { pglAutocomplete } from '../dsl/cm-autocomplete.ts';
 import { pgl } from '../dsl/cm-language.ts';
 import { pglLinter } from '../dsl/cm-lint.ts';
+import { diffLines } from '../lib/diff-lines.ts';
 import { useStore } from '../store/index.ts';
 
 export function EditorPane() {
@@ -59,12 +60,16 @@ export function EditorPane() {
       if (!view) return;
       const current = view.state.doc.toString();
       if (s.dslText !== current) {
-        applyingExternal.current = true;
-        view.dispatch({
-          changes: { from: 0, to: current.length, insert: s.dslText },
-          selection: { anchor: Math.min(view.state.selection.main.anchor, s.dslText.length) },
-        });
-        applyingExternal.current = false;
+        // Apply a *minimal* line-level diff (PRD §8, cursor preservation): only
+        // the lines that actually changed are rewritten, so CodeMirror maps the
+        // caret through untouched lines and it doesn't jump when a model change
+        // (e.g. dragging a table) reprints the document under the user.
+        const changes = diffLines(current, s.dslText);
+        if (changes.length) {
+          applyingExternal.current = true;
+          view.dispatch({ changes });
+          applyingExternal.current = false;
+        }
       }
     });
 

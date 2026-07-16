@@ -7,7 +7,7 @@
 import { enableMapSet, produce } from 'immer';
 import { temporal } from 'zundo';
 import { create } from 'zustand';
-import { parse } from '../dsl/parser.ts';
+import { createParseScheduler } from '../dsl/parse-scheduler.ts';
 import { print } from '../dsl/printer.ts';
 import { type LayoutAlgo, autoLayout } from '../layout/auto-layout.ts';
 import { gridLayout, needsLayout } from '../layout/grid.ts';
@@ -131,6 +131,22 @@ export const useStore = create<AppState>()(
         set({ dslText: text, dirtySource: null });
       };
 
+      /** Apply a freshly-parsed schema (from the worker/scheduler) into the live
+       *  model. On errors keep the last-good model and dim the canvas (§8). */
+      const applyParse = ({
+        schema,
+        diagnostics,
+      }: { schema: Schema; diagnostics: Diagnostic[] }) => {
+        if (diagnostics.some((d) => d.severity === 'error')) {
+          set({ diagnostics, stale: true });
+          return;
+        }
+        const merged = mergeSchema(get().schema, schema);
+        set({ schema: merged, diagnostics, dirtySource: null, stale: false });
+      };
+
+      const scheduler = createParseScheduler(applyParse);
+
       /** Apply a schema mutation via immer, refresh diagnostics, reprint text. */
       const mutate = (recipe: (s: Schema) => void) => {
         const nextSchema = produce(get().schema, (draft) => {
@@ -169,21 +185,12 @@ export const useStore = create<AppState>()(
         actions: {
           setDslText(text) {
             if (text === lastPrinted) return; // echo of our own print — ignore
-            const { schema, diagnostics } = parse(text, NOW());
-            const errors = diagnostics.filter((d) => d.severity === 'error');
-            if (errors.length) {
-              // keep the old model on canvas, mark stale, surface diagnostics
-              set({ dslText: text, dirtySource: 'text', diagnostics, stale: true });
-              return;
-            }
-            const merged = mergeSchema(get().schema, schema);
-            set({
-              dslText: text,
-              schema: merged,
-              diagnostics,
-              dirtySource: null,
-              stale: false,
-            });
+            // Keep the editor responsive: commit the text immediately, then let
+            // the scheduler parse+merge off the main thread (§8). The debounce
+            // and monotonic request id live in the scheduler; here we only need
+            // the reprint guard so our own prints don't loop back through it.
+            set({ dslText: text, dirtySource: 'text' });
+            scheduler.request(text, NOW());
           },
 
           loadSchema(rawSchema) {
