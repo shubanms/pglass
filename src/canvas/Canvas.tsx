@@ -5,6 +5,7 @@ import { Maximize2, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { detectJunction } from '../model/junction.ts';
 import type { ColumnId, RefAction, TableId } from '../model/types.ts';
+import { viewDependencies } from '../model/views.ts';
 import { useStore } from '../store/index.ts';
 import { Edge } from './Edge.tsx';
 import { GroupLayer } from './GroupLayer.tsx';
@@ -13,9 +14,17 @@ import { Minimap } from './Minimap.tsx';
 import { StickyNoteNode } from './StickyNoteNode.tsx';
 import { TableContextMenu } from './TableContextMenu.tsx';
 import { TableNode } from './TableNode.tsx';
+import { ViewNode } from './ViewNode.tsx';
 import { ViewOptions } from './ViewOptions.tsx';
 import type { Box } from './geometry.ts';
-import { columnPortY, contentBounds, tableBox, tablesInRect, tablesInView } from './geometry.ts';
+import {
+  columnPortY,
+  contentBounds,
+  tableBox,
+  tablesInRect,
+  tablesInView,
+  viewBox,
+} from './geometry.ts';
 
 const LOD_ZOOM = 0.4;
 
@@ -475,6 +484,36 @@ export function Canvas() {
             <StickyNoteNode key={note.id} note={note} zoom={viewport.zoom} />
           ))}
 
+          {/* view → table dependency edges (dashed, best-effort) */}
+          <g className="view-deps">
+            {schema.views.flatMap((v) => {
+              if (!v.pos) return [];
+              const vb = viewBox(v);
+              const vcx = vb.x + vb.w / 2;
+              const vcy = vb.y + vb.h / 2;
+              return viewDependencies(schema, v).map((tid) => {
+                const t = schema.tables.find((x) => x.id === tid);
+                if (!t) return null;
+                const tb = tableBox(t);
+                const tcx = tb.x + tb.w / 2;
+                const tcy = tb.y + tb.h / 2;
+                return (
+                  <line
+                    key={`${v.id}-${tid}`}
+                    x1={vcx}
+                    y1={vcy}
+                    x2={tcx}
+                    y2={tcy}
+                    stroke={v.color ?? '#7c3aed'}
+                    strokeWidth={1}
+                    strokeDasharray="3 4"
+                    opacity={0.4}
+                  />
+                );
+              });
+            })}
+          </g>
+
           <g className="edges" style={{ ['--edge' as string]: 'var(--text-muted)' }}>
             {schema.relationships.map((rel) =>
               // hide an edge when either endpoint is hidden (collapsed group / M:N)
@@ -528,6 +567,13 @@ export function Canvas() {
                 linkable={!!link}
                 on={handlers}
               />
+            ))}
+          </g>
+
+          {/* views (rendered above tables) */}
+          <g className="views">
+            {schema.views.map((v) => (
+              <ViewNode key={v.id} view={v} zoom={viewport.zoom} selected={false} />
             ))}
           </g>
 

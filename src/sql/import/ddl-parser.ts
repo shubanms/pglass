@@ -3,7 +3,14 @@
 // inline + table constraints, CREATE TYPE AS ENUM, CREATE INDEX, ALTER TABLE ...
 // ADD CONSTRAINT (pg_dump emits PKs/FKs this way), SET DEFAULT nextval()
 // normalization, and COMMENT ON.
-import { newColumnId, newEnumId, newIndexId, newRelId, newTableId } from '../../model/ids.ts';
+import {
+  newColumnId,
+  newEnumId,
+  newIndexId,
+  newRelId,
+  newTableId,
+  newViewId,
+} from '../../model/ids.ts';
 import { emptySchema } from '../../model/schema.ts';
 import type {
   Column,
@@ -102,7 +109,41 @@ export function importSql(sql: string, now = new Date().toISOString()): ImportRe
     }
   }
 
+  // Promote captured CREATE VIEW / MATERIALIZED VIEW objects to first-class
+  // views (query body preserved verbatim); leave functions/triggers as raw.
+  promoteViews(schema);
+
   return { schema, diagnostics };
+}
+
+const VIEW_RE =
+  /^create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?"?([a-z0-9_.]+)"?\s*(?:\([^)]*\))?\s+as\s+([\s\S]*)$/i;
+
+function promoteViews(schema: Schema) {
+  const raw = schema.meta.rawObjects;
+  if (!raw) return;
+  const remaining: { kind: string; name: string; sql: string }[] = [];
+  for (const obj of raw) {
+    if (obj.kind !== 'view' && obj.kind !== 'materialized view') {
+      remaining.push(obj);
+      continue;
+    }
+    const m = VIEW_RE.exec(obj.sql.trim());
+    if (!m) {
+      remaining.push(obj);
+      continue;
+    }
+    const [ns, name] = splitQual(m[1]!);
+    const query = m[2]!.trim().replace(/;\s*$/, '').trim();
+    schema.views.push({
+      id: newViewId(),
+      namespace: ns || 'public',
+      name,
+      query,
+      materialized: obj.kind === 'materialized view',
+    });
+  }
+  schema.meta.rawObjects = remaining.length ? remaining : undefined;
 }
 
 // ─── CREATE TYPE ... AS ENUM ─────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { exportDDL } from '../export/ddl-writer.ts';
 import { importSql } from '../import/ddl-parser.ts';
 import { splitStatements } from '../import/tokenizer.ts';
 
@@ -93,9 +94,12 @@ describe('pg_dump import', () => {
     expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
   });
 
-  it('captures the extension and preserves the view', () => {
+  it('captures the extension and models the view', () => {
     expect(schema.meta.extensions).toContain('citext');
-    expect(schema.meta.rawObjects?.some((r) => r.kind === 'view')).toBe(true);
+    const view = schema.views.find((v) => v.name === 'recent_orders');
+    expect(view).toBeDefined();
+    expect(view?.materialized).toBe(false);
+    expect(view?.query).toContain('SELECT id, customer_id FROM public.orders');
   });
 
   it('parses both tables with all columns', () => {
@@ -161,5 +165,20 @@ describe('pg_dump import', () => {
       .columns.find((c) => c.name === 'name')!;
     expect(name.type.name).toBe('varchar');
     expect(name.type.args).toEqual([120]);
+  });
+});
+
+describe('view SQL round-trip', () => {
+  it('imports a materialized view and re-exports it', () => {
+    const sql = `CREATE TABLE public.orders (id bigint PRIMARY KEY, total integer);
+CREATE MATERIALIZED VIEW public.daily AS
+    SELECT sum(total) FROM public.orders;
+`;
+    const { schema } = importSql(sql);
+    const v = schema.views.find((x) => x.name === 'daily');
+    expect(v?.materialized).toBe(true);
+    const ddl = exportDDL(schema);
+    expect(ddl).toContain('CREATE MATERIALIZED VIEW daily AS');
+    expect(ddl).toContain('SELECT sum(total) FROM public.orders');
   });
 });

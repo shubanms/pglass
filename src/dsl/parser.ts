@@ -11,6 +11,7 @@ import {
   newNoteId,
   newRelId,
   newTableId,
+  newViewId,
 } from '../model/ids.ts';
 import type {
   Column,
@@ -27,6 +28,7 @@ import type {
   StickyNote,
   Table,
   TableGroup,
+  View,
 } from '../model/types.ts';
 import { arityAccepts, canonicalTypeName, isBuiltinType, lookupType } from '../sql/types.ts';
 import { type Token, lex } from './lexer.ts';
@@ -39,6 +41,19 @@ const REF_ACTIONS: Record<string, RefAction> = {
   'set default': 'set_default',
   'no action': 'no_action',
 };
+
+/** Normalise a triple-quoted block body to a canonical, re-indentable form:
+ *  drop the leading/trailing blank lines introduced by the delimiters and strip
+ *  the common leading indentation. The printer re-indents uniformly, so
+ *  parse∘print is byte-stable. */
+export function dedentBlock(raw: string): string {
+  let lines = raw.split('\n');
+  if (lines.length && lines[0]!.trim() === '') lines = lines.slice(1);
+  if (lines.length && lines[lines.length - 1]!.trim() === '') lines = lines.slice(0, -1);
+  const indents = lines.filter((l) => l.trim() !== '').map((l) => l.match(/^ */)?.[0].length ?? 0);
+  const common = indents.length ? Math.min(...indents) : 0;
+  return lines.map((l) => l.slice(common)).join('\n');
+}
 
 interface PendingRef {
   name?: string;
@@ -85,6 +100,7 @@ class Parser {
       relationships: [],
       indexes: [],
       enums: [],
+      views: [],
       notes: [],
       groups: [],
       namespaces: ['public'],
@@ -174,6 +190,8 @@ class Parser {
         return this.parseNamespace();
       case 'enum':
         return this.parseEnum();
+      case 'view':
+        return this.parseView();
       case 'table':
         return this.parseTable();
       case 'ref':
@@ -267,6 +285,34 @@ class Parser {
     this.eat('rbrace');
     if (Object.keys(valueNotes).length) en.valueNotes = valueNotes;
     this.schema.enums.push(en);
+  }
+
+  // ── view ──
+  private parseView() {
+    this.next(); // 'view'
+    const { namespace, name } = this.parseQualName();
+    if (!name) {
+      this.recover();
+      return;
+    }
+    const view: View = { id: newViewId(), namespace, name, query: '', materialized: false };
+    if (this.at('lbrack')) {
+      const settings = this.parseSettingsBlock();
+      for (const s of settings) {
+        if (s.key === 'materialized') view.materialized = true;
+        else if (s.key === 'color' && s.value) view.color = s.value;
+        else if (s.key === 'note' && s.value) view.comment = s.value;
+      }
+    }
+    if (this.eat('lbrace')) {
+      const v = this.peek();
+      if (v.kind === 'tstring' || v.kind === 'string' || v.kind === 'dstring') {
+        view.query = dedentBlock(v.value);
+        this.next();
+      }
+      this.eat('rbrace');
+    }
+    this.schema.views.push(view);
   }
 
   // ── table ──
@@ -828,7 +874,7 @@ class Parser {
     if (this.eat('lbrace')) {
       const v = this.peek();
       if (v.kind === 'tstring' || v.kind === 'string' || v.kind === 'dstring') {
-        note.text = v.value;
+        note.text = dedentBlock(v.value);
         this.next();
       }
       this.eat('rbrace');
@@ -914,7 +960,7 @@ class Parser {
     }
 
     // flag settings (no value)
-    if (['pk', 'increment', 'null', 'unique'].includes(word)) {
+    if (['pk', 'increment', 'null', 'unique', 'materialized'].includes(word)) {
       this.next();
       return { key: word };
     }
@@ -1257,7 +1303,16 @@ class Parser {
   }
 }
 
-const TOP_KEYWORDS = new Set(['project', 'namespace', 'enum', 'table', 'ref', 'group', 'note']);
+const TOP_KEYWORDS = new Set([
+  'project',
+  'namespace',
+  'enum',
+  'view',
+  'table',
+  'ref',
+  'group',
+  'note',
+]);
 
 interface Setting {
   key: string;

@@ -25,7 +25,17 @@ const SETTING_KEYS = [
   'include',
 ];
 
-const TOP_KEYWORDS = ['project', 'namespace', 'enum', 'table', 'ref', 'group', 'note', 'indexes'];
+const TOP_KEYWORDS = [
+  'project',
+  'namespace',
+  'enum',
+  'view',
+  'table',
+  'ref',
+  'group',
+  'note',
+  'indexes',
+];
 
 export function pglAutocomplete(getSchema: () => Schema) {
   return (context: CompletionContext): CompletionResult | null => {

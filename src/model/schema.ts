@@ -21,6 +21,7 @@ export function emptySchema(name = 'untitled', now = '1970-01-01T00:00:00.000Z')
     relationships: [],
     indexes: [],
     enums: [],
+    views: [],
     notes: [],
     groups: [],
     namespaces: ['public'],

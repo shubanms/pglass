@@ -8,7 +8,7 @@ export interface PaletteItem {
   id: string;
   label: string;
   hint?: string;
-  group: 'Command' | 'Table' | 'Enum';
+  group: 'Command' | 'Table' | 'Enum' | 'View';
   run: () => void;
 }
 
@@ -43,8 +43,17 @@ export function CommandPalette({
         /* enums have no canvas node yet — selecting is a no-op jump */
       },
     }));
-    return [...commands, ...tables, ...enums];
-  }, [schema.tables, schema.enums, commands, actions]);
+    const views: PaletteItem[] = schema.views.map((v) => ({
+      id: `view:${v.id}`,
+      label: v.name,
+      hint: v.materialized ? 'mat. view' : 'view',
+      group: 'View',
+      run: () => {
+        /* views render on the canvas; jump is a no-op for now */
+      },
+    }));
+    return [...commands, ...tables, ...enums, ...views];
+  }, [schema.tables, schema.enums, schema.views, commands, actions]);
 
   const ranked = useMemo(
     () => fuzzyRank(query, items, (it) => it.label).slice(0, 60),
