@@ -9,6 +9,7 @@ import type {
   Relationship,
   Schema,
   Table,
+  View,
 } from '../../model/types.ts';
 
 export interface DdlOptions {
@@ -68,6 +69,11 @@ function refAction(a: RefAction): string {
 function writeEnum(en: EnumType): string {
   const vals = en.values.map(sqlString).join(', ');
   return `CREATE TYPE ${qname(en.namespace, en.name)} AS ENUM (${vals});`;
+}
+
+function writeView(v: View): string {
+  const kw = v.materialized ? 'MATERIALIZED VIEW' : 'VIEW';
+  return `CREATE ${kw} ${qname(v.namespace, v.name)} AS\n${v.query};`;
 }
 
 function writeColumn(col: Column, table: Table): string {
@@ -189,6 +195,10 @@ export function exportDDL(schema: Schema, options: Partial<DdlOptions> = {}): st
 
   if (opts.includeDropPrelude) {
     const drops: string[] = [];
+    for (const v of schema.views)
+      drops.push(
+        `DROP ${v.materialized ? 'MATERIALIZED VIEW' : 'VIEW'} IF EXISTS ${qname(v.namespace, v.name)} CASCADE;`,
+      );
     for (const t of schema.tables)
       drops.push(`DROP TABLE IF EXISTS ${qname(t.namespace, t.name)} CASCADE;`);
     for (const e of schema.enums)
@@ -229,6 +239,9 @@ export function exportDDL(schema: Schema, options: Partial<DdlOptions> = {}): st
     .map((r) => writeForeignKey(schema, r))
     .filter((s): s is string => !!s);
   if (fks.length) sections.push(fks.join('\n'));
+
+  // 5b. views (after the tables they read from)
+  for (const v of schema.views) sections.push(writeView(v));
 
   // 6. comments
   if (opts.includeComments) {

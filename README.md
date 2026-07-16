@@ -86,6 +86,15 @@ Under active construction, built in the phases described in the PRD (§18):
 
 **All phases from the PRD build order (§18) are now complete.**
 
+### Beyond the PRD
+
+- [x] **Views** — `view` / materialized `view` are first-class: they round-trip through
+      the `.pgl` DSL (`view name [materialized] { ''' <query> ''' }`), import from and
+      export to SQL (`CREATE [MATERIALIZED] VIEW`), render as a distinct dashed node on the
+      canvas with best-effort dashed dependency edges to the tables they read, appear in the
+      Markdown data dictionary, and get a Views section in the sidebar. Generated columns
+      (`GENERATED ALWAYS AS (…) STORED`) are now editable from the column inspector.
+
 ### The `.pgl` DSL
 
 `.pgl` is the terse authoring format that round-trips losslessly with the model.

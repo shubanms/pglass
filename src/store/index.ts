@@ -11,7 +11,7 @@ import { createParseScheduler } from '../dsl/parse-scheduler.ts';
 import { print } from '../dsl/printer.ts';
 import { type LayoutAlgo, autoLayout } from '../layout/auto-layout.ts';
 import { gridLayout, needsLayout } from '../layout/grid.ts';
-import { newColumnId, newGroupId, newNoteId, newTableId } from '../model/ids.ts';
+import { newColumnId, newGroupId, newNoteId, newTableId, newViewId } from '../model/ids.ts';
 import { emptySchema } from '../model/schema.ts';
 import type {
   Column,
@@ -26,6 +26,8 @@ import type {
   Table,
   TableGroup,
   TableId,
+  View,
+  ViewId,
 } from '../model/types.ts';
 import { importSql } from '../sql/import/ddl-parser.ts';
 import { mergeSchema } from './merge.ts';
@@ -126,6 +128,11 @@ export interface Actions {
   updateNote(id: NoteId, patch: Partial<StickyNote>): void;
   deleteNote(id: NoteId): void;
   moveNote(id: NoteId, dx: number, dy: number): void;
+
+  addView(pos: { x: number; y: number }): ViewId;
+  updateView(id: ViewId, patch: Partial<View>): void;
+  deleteView(id: ViewId): void;
+  moveView(id: ViewId, dx: number, dy: number): void;
 
   importSqlText(sql: string): Diagnostic[];
   applyFix(d: Diagnostic): void;
@@ -236,7 +243,7 @@ export const useStore = create<AppState>()(
           set({ diagnostics, stale: true });
           return;
         }
-        const merged = mergeSchema(get().schema, schema);
+        const merged = placeViews(mergeSchema(get().schema, schema));
         set({ schema: merged, diagnostics, dirtySource: null, stale: false });
       };
 
@@ -299,7 +306,7 @@ export const useStore = create<AppState>()(
             // pre-layout schema so positions (which the DSL doesn't encode) don't
             // affect the canonical output.
             const text = print(rawSchema);
-            const schema = needsLayout(rawSchema) ? gridLayout(rawSchema) : rawSchema;
+            const schema = placeViews(needsLayout(rawSchema) ? gridLayout(rawSchema) : rawSchema);
             lastPrinted = text;
             set((st) => ({
               schema,
@@ -535,6 +542,41 @@ export const useStore = create<AppState>()(
             });
           },
 
+          addView(pos) {
+            const id = newViewId();
+            mutate((s) => {
+              s.views.push({
+                id,
+                namespace: 'public',
+                name: uniqueViewName(s, 'new_view'),
+                query: 'select * from ',
+                materialized: false,
+                pos,
+              });
+            });
+            return id;
+          },
+
+          updateView(id, patch) {
+            mutate((s) => {
+              const v = s.views.find((x) => x.id === id);
+              if (v) Object.assign(v, patch);
+            });
+          },
+
+          deleteView(id) {
+            mutate((s) => {
+              s.views = s.views.filter((v) => v.id !== id);
+            });
+          },
+
+          moveView(id, dx, dy) {
+            mutate((s) => {
+              const v = s.views.find((x) => x.id === id);
+              if (v) v.pos = { x: (v.pos?.x ?? 0) + dx, y: (v.pos?.y ?? 0) + dy };
+            });
+          },
+
           importSqlText(sql) {
             const { schema, diagnostics } = importSql(sql, NOW());
             get().actions.loadSchema(schema);
@@ -666,6 +708,32 @@ function uniqueColumnName(t: Table, base: string): string {
   let name = base;
   let n = 1;
   const exists = (nm: string) => t.columns.some((c) => c.name.toLowerCase() === nm.toLowerCase());
+  while (exists(name)) name = `${base}_${++n}`;
+  return name;
+}
+
+/** Assign a position to any view that lacks one (parsed/imported views carry no
+ *  pos), placing them in a column to the right of the tables. Positions are
+ *  visual-only and carried across reparses by the merge, like table positions. */
+function placeViews(schema: Schema): Schema {
+  if (schema.views.every((v) => v.pos)) return schema;
+  const rightmost = schema.tables.length
+    ? Math.max(...schema.tables.map((t) => t.pos.x + (t.size?.w ?? 240))) + 80
+    : 40;
+  let y = 40;
+  const views = schema.views.map((v) => {
+    if (v.pos) return v;
+    const placed = { ...v, pos: { x: rightmost, y } };
+    y += 180;
+    return placed;
+  });
+  return { ...schema, views };
+}
+
+function uniqueViewName(s: Schema, base: string): string {
+  let name = base;
+  let n = 1;
+  const exists = (nm: string) => s.views.some((v) => v.name.toLowerCase() === nm.toLowerCase());
   while (exists(name)) name = `${base}_${++n}`;
   return name;
 }

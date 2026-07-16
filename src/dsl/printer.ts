@@ -13,6 +13,7 @@ import type {
   Relationship,
   Schema,
   Table,
+  View,
 } from '../model/types.ts';
 
 const INTEGER_TYPES = new Set(['smallint', 'integer', 'bigint']);
@@ -37,6 +38,13 @@ export function print(schema: Schema): string {
   const enums = [...schema.enums].sort((a, b) => qual(a).localeCompare(qual(b)));
   for (const en of enums) {
     out.push(printEnum(en));
+    out.push('');
+  }
+
+  // 2b. views (alphabetical)
+  const views = [...schema.views].sort((a, b) => qual(a).localeCompare(qual(b)));
+  for (const view of views) {
+    out.push(printView(view));
     out.push('');
   }
 
@@ -90,6 +98,20 @@ export function print(schema: Schema): string {
 
   // single trailing newline, LF only
   return `${out.join('\n').replace(/\n+$/, '')}\n`;
+}
+
+function printView(view: View): string {
+  const settings: string[] = [];
+  if (view.materialized) settings.push('materialized');
+  if (view.color) settings.push(`color: ${view.color}`);
+  if (view.comment) settings.push(`note: ${str(view.comment)}`);
+  const head = settings.length
+    ? `view ${qual(view)} [${settings.join(', ')}] {`
+    : `view ${qual(view)} {`;
+  const lines = [head, `${INDENT}'''`];
+  for (const line of view.query.split('\n')) lines.push(`${INDENT}${line}`.trimEnd());
+  lines.push(`${INDENT}'''`, '}');
+  return lines.join('\n');
 }
 
 function printEnum(en: EnumType): string {
@@ -358,7 +380,7 @@ function identOrString(s: string): string {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s) ? s : str(s);
 }
 
-function qual(e: EnumType): string {
+function qual(e: { namespace: string; name: string }): string {
   return e.namespace === 'public' ? e.name : `${e.namespace}.${e.name}`;
 }
 function qualTable(t: Table): string {

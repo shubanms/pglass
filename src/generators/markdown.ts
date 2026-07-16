@@ -32,6 +32,14 @@ export function generateMarkdown(schema: Schema): string {
     out.push('', '## Enums', '');
     for (const e of schema.enums) out.push(`- **${e.name}**: ${e.values.join(', ')}`);
   }
+  if (schema.views.length) {
+    out.push('', '## Views', '');
+    for (const v of schema.views) {
+      out.push(`### ${v.name}${v.materialized ? ' (materialized)' : ''}`, '');
+      if (v.comment) out.push(v.comment, '');
+      out.push('```sql', v.query.trim(), '```', '');
+    }
+  }
   out.push('');
 
   // per-table detail

@@ -148,6 +148,17 @@ export function mergeSchema(prev: Schema, next: Schema): Schema {
     }
   }
 
+  // ── Views: carry position/color/id by (namespace, name) ──
+  const carriedViews = next.views.map((nv) => {
+    const pv = prev.views.find(
+      (v) =>
+        v.namespace.toLowerCase() === nv.namespace.toLowerCase() &&
+        v.name.toLowerCase() === nv.name.toLowerCase(),
+    );
+    if (!pv) return nv;
+    return { ...nv, id: pv.id, pos: pv.pos ?? nv.pos, color: nv.color ?? pv.color };
+  });
+
   // ── Groups: carry id/collapsed by name, re-point table.groupId ──
   const groupIdRemap = new Map<GroupId, GroupId>();
   const carriedGroups = next.groups.map((ng) => {
@@ -166,6 +177,7 @@ export function mergeSchema(prev: Schema, next: Schema): Schema {
     relationships: carriedRels,
     indexes: carriedIndexes,
     enums: carriedEnums,
+    views: carriedViews,
     groups: carriedGroups,
     notes: mergeNotes(prev, next),
     meta: { ...next.meta, createdAt: prev.meta.createdAt },

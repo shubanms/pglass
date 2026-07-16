@@ -194,6 +194,10 @@ function usePaletteCommands(cb: {
         const v = useStore.getState().viewport;
         actions.addNote({ x: -v.x / v.zoom + 80, y: -v.y / v.zoom + 80 });
       }),
+      cmd('add-view', 'Add view', () => {
+        const v = useStore.getState().viewport;
+        actions.addView({ x: -v.x / v.zoom + 80, y: -v.y / v.zoom + 80 });
+      }),
       cmd('group-selection', 'Group selected tables', () => actions.groupSelection()),
       cmd('layout-layered', 'Auto-layout: layered', () => void actions.autoLayout('layered'), '⌘G'),
       cmd('layout-force', 'Auto-layout: force', () => void actions.autoLayout('force')),
@@ -600,6 +604,38 @@ function LeftPanel() {
             ))}
           </>
         )}
+        {schema.views.length > 0 && (
+          <>
+            <div
+              className="mt-4 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Views <span className="opacity-60">{schema.views.length}</span>
+            </div>
+            {schema.views.map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                style={{ color: 'var(--text)' }}
+                title={v.materialized ? 'materialized view' : 'view'}
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: v.color ?? '#7c3aed' }}
+                />
+                <span className="truncate">{v.name}</span>
+                {v.materialized && (
+                  <span
+                    className="ml-auto text-[9px] font-bold"
+                    style={{ color: 'var(--text-muted)' }}
+                  >
+                    MAT
+                  </span>
+                )}
+              </div>
+            ))}
+          </>
+        )}
       </div>
     </aside>
   );
@@ -753,57 +789,100 @@ function InspectorColumn({
     actions.updateTable(tableId, { primaryKey: pk });
   };
 
+  const isGenerated = column.generated.kind === 'stored';
+  const genExpr = column.generated.kind === 'stored' ? column.generated.expr : '';
+  const toggleGenerated = () => {
+    actions.updateColumn(tableId, column.id, {
+      generated: isGenerated ? { kind: 'none' } : { kind: 'stored', expr: '' },
+    });
+  };
+
   return (
     <div
-      className="flex items-center gap-1 rounded px-1.5 py-1 transition-colors"
+      className="rounded transition-colors"
       style={{ background: 'var(--bg-elevated)' }}
       onPointerEnter={() => setHover(true)}
       onPointerLeave={() => setHover(false)}
     >
-      <button
-        type="button"
-        onClick={togglePk}
-        title="Toggle primary key"
-        className="shrink-0 rounded px-1 text-[10px] font-bold"
-        style={{ color: isPk ? '#d97706' : 'var(--text-muted)', opacity: isPk ? 1 : 0.4 }}
-      >
-        PK
-      </button>
-      <input
-        value={column.name}
-        onChange={(e) => actions.updateColumn(tableId, column.id, { name: e.target.value })}
-        className="min-w-0 flex-1 rounded bg-transparent px-1 outline-none focus:ring-1"
-        style={{ color: 'var(--text)' }}
-      />
-      <input
-        value={typeStrOf(column)}
-        onChange={(e) =>
-          actions.updateColumn(tableId, column.id, { type: parseTypeInput(e.target.value) })
-        }
-        className="mono w-20 shrink-0 rounded bg-transparent px-1 text-right text-[11px] outline-none focus:ring-1"
-        style={{ color: 'var(--text-muted)' }}
-      />
-      <button
-        type="button"
-        onClick={() => actions.updateColumn(tableId, column.id, { notNull: !column.notNull })}
-        title="Toggle NOT NULL"
-        className="shrink-0 rounded px-1 text-[10px] font-bold"
-        style={{
-          color: column.notNull ? 'var(--accent)' : 'var(--text-muted)',
-          opacity: column.notNull ? 1 : 0.4,
-        }}
-      >
-        NN
-      </button>
-      <button
-        type="button"
-        onClick={() => actions.deleteColumn(tableId, column.id)}
-        aria-label="Delete column"
-        className="shrink-0 rounded px-0.5"
-        style={{ color: '#dc2626', opacity: hover ? 0.9 : 0 }}
-      >
-        <X size={13} />
-      </button>
+      <div className="flex items-center gap-1 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={togglePk}
+          title="Toggle primary key"
+          className="shrink-0 rounded px-1 text-[10px] font-bold"
+          style={{ color: isPk ? '#d97706' : 'var(--text-muted)', opacity: isPk ? 1 : 0.4 }}
+        >
+          PK
+        </button>
+        <input
+          value={column.name}
+          onChange={(e) => actions.updateColumn(tableId, column.id, { name: e.target.value })}
+          className="min-w-0 flex-1 rounded bg-transparent px-1 outline-none focus:ring-1"
+          style={{ color: 'var(--text)' }}
+        />
+        <input
+          value={typeStrOf(column)}
+          onChange={(e) =>
+            actions.updateColumn(tableId, column.id, { type: parseTypeInput(e.target.value) })
+          }
+          className="mono w-20 shrink-0 rounded bg-transparent px-1 text-right text-[11px] outline-none focus:ring-1"
+          style={{ color: 'var(--text-muted)' }}
+        />
+        <button
+          type="button"
+          onClick={() => actions.updateColumn(tableId, column.id, { notNull: !column.notNull })}
+          title="Toggle NOT NULL"
+          className="shrink-0 rounded px-1 text-[10px] font-bold"
+          style={{
+            color: column.notNull ? 'var(--accent)' : 'var(--text-muted)',
+            opacity: column.notNull ? 1 : 0.4,
+          }}
+        >
+          NN
+        </button>
+        <button
+          type="button"
+          onClick={toggleGenerated}
+          title="Generated column (GENERATED ALWAYS AS … STORED)"
+          className="mono shrink-0 rounded px-1 text-[10px] font-bold italic"
+          style={{
+            color: isGenerated ? '#7c3aed' : 'var(--text-muted)',
+            opacity: isGenerated ? 1 : 0.4,
+          }}
+        >
+          fx
+        </button>
+        <button
+          type="button"
+          onClick={() => actions.deleteColumn(tableId, column.id)}
+          aria-label="Delete column"
+          className="shrink-0 rounded px-0.5"
+          style={{ color: '#dc2626', opacity: hover ? 0.9 : 0 }}
+        >
+          <X size={13} />
+        </button>
+      </div>
+      {isGenerated && (
+        <div className="flex items-center gap-1 px-1.5 pb-1.5">
+          <span className="mono shrink-0 px-1 text-[10px]" style={{ color: '#7c3aed' }}>
+            AS
+          </span>
+          <input
+            value={genExpr}
+            placeholder="expression, e.g. price * qty"
+            onChange={(e) =>
+              actions.updateColumn(tableId, column.id, {
+                generated: { kind: 'stored', expr: e.target.value },
+              })
+            }
+            className="mono min-w-0 flex-1 rounded bg-transparent px-1 text-[11px] outline-none focus:ring-1"
+            style={{ color: 'var(--text)', boxShadow: 'inset 0 0 0 1px var(--border)' }}
+          />
+          <span className="shrink-0 text-[9px]" style={{ color: 'var(--text-muted)' }}>
+            STORED
+          </span>
+        </div>
+      )}
     </div>
   );
 }

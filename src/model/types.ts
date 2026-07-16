@@ -8,6 +8,7 @@ export type ColumnId = string & { readonly __brand: 'ColumnId' };
 export type RelId = string & { readonly __brand: 'RelId' };
 export type IndexId = string & { readonly __brand: 'IndexId' };
 export type EnumId = string & { readonly __brand: 'EnumId' };
+export type ViewId = string & { readonly __brand: 'ViewId' };
 export type NoteId = string & { readonly __brand: 'NoteId' };
 export type GroupId = string & { readonly __brand: 'GroupId' };
 
@@ -144,6 +145,21 @@ export interface EnumType {
   color?: string;
 }
 
+/** A (materialized) view — modelled first-class: the query body is preserved
+ *  verbatim, and the view renders on the canvas with dependency edges. */
+export interface View {
+  id: ViewId;
+  namespace: string;
+  name: string;
+  /** the SELECT body (everything after `AS`), preserved verbatim */
+  query: string;
+  materialized: boolean;
+  comment?: string;
+  /** visual */
+  pos?: { x: number; y: number };
+  color?: string;
+}
+
 // ─── Visual-only entities ───────────────────────────────────────────────
 export interface StickyNote {
   id: NoteId;
@@ -170,6 +186,7 @@ export interface Schema {
   relationships: Relationship[];
   indexes: Index[];
   enums: EnumType[];
+  views: View[];
   notes: StickyNote[];
   groups: TableGroup[];
   /** ordered list of namespaces to render/emit; "public" always present */
