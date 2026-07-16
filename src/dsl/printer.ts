@@ -11,8 +11,11 @@ import type {
   PgType,
   RefAction,
   Relationship,
+  Routine,
   Schema,
   Table,
+  Trigger,
+  TriggerEvent,
   View,
 } from '../model/types.ts';
 
@@ -48,6 +51,13 @@ export function print(schema: Schema): string {
     out.push('');
   }
 
+  // 2c. functions (alphabetical)
+  const routines = [...schema.routines].sort((a, b) => qual(a).localeCompare(qual(b)));
+  for (const r of routines) {
+    out.push(printRoutine(r));
+    out.push('');
+  }
+
   // 3. tables (canvas reading order: pos.y bucketed to 100px, then pos.x; stable
   //    sort preserves source order when positions are equal)
   const tables = [...schema.tables].sort((a, b) => {
@@ -74,6 +84,13 @@ export function print(schema: Schema): string {
     for (const { text } of standalone) out.push(text);
     out.push('');
   }
+
+  // 4b. triggers (alphabetical by name)
+  const triggers = [...schema.triggers].sort((a, b) => a.name.localeCompare(b.name));
+  for (const tg of triggers) {
+    out.push(printTrigger(schema, tg));
+  }
+  if (triggers.length) out.push('');
 
   // 5. groups
   for (const g of schema.groups) {
@@ -112,6 +129,27 @@ function printView(view: View): string {
   for (const line of view.query.split('\n')) lines.push(`${INDENT}${line}`.trimEnd());
   lines.push(`${INDENT}'''`, '}');
   return lines.join('\n');
+}
+
+function printRoutine(r: Routine): string {
+  let head = `function ${qual(r)}(${r.args})`;
+  if (r.returns) head += ` returns ${r.returns}`;
+  head += ` language ${r.language} {`;
+  const lines = [head, `${INDENT}'''`];
+  for (const line of r.body.split('\n')) lines.push(`${INDENT}${line}`.trimEnd());
+  lines.push(`${INDENT}'''`, '}');
+  return lines.join('\n');
+}
+
+const TRIGGER_EVENT_ORDER: TriggerEvent[] = ['insert', 'update', 'delete', 'truncate'];
+
+function printTrigger(schema: Schema, tg: Trigger): string {
+  const table = schema.tables.find((t) => t.id === tg.table);
+  const tableName = table ? qualTable(table) : 'unknown';
+  const flags: string[] = [tg.timing];
+  for (const e of TRIGGER_EVENT_ORDER) if (tg.events.includes(e)) flags.push(e);
+  flags.push(tg.level);
+  return `trigger ${tg.name} on ${tableName} [${flags.join(', ')}] exec ${tg.functionName}`;
 }
 
 function printEnum(en: EnumType): string {

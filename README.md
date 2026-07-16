@@ -95,6 +95,15 @@ Under active construction, built in the phases described in the PRD (§18):
       Markdown data dictionary, and get a Views section in the sidebar. Generated columns
       (`GENERATED ALWAYS AS (…) STORED`) are now editable from the column inspector.
 
+- [x] **Functions & triggers** — stored functions and the triggers that fire them are
+      first-class too. Functions round-trip through the DSL
+      (`function name(args) returns T language plpgsql { ''' <body> ''' }`) and SQL
+      (`CREATE [OR REPLACE] FUNCTION`), rendering as a dashed node with a body preview.
+      Triggers (`trigger name on table [before, insert, update, row] exec fn`) import/export
+      as `CREATE TRIGGER`, attach to their table by identity, and render as pills anchored
+      beneath it. Both appear in the Markdown data dictionary and get Functions / Triggers
+      sections in the sidebar.
+
 ### The `.pgl` DSL
 
 `.pgl` is the terse authoring format that round-trips losslessly with the model.

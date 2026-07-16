@@ -40,6 +40,24 @@ export function generateMarkdown(schema: Schema): string {
       out.push('```sql', v.query.trim(), '```', '');
     }
   }
+  if (schema.routines.length) {
+    out.push('', '## Functions', '');
+    for (const r of schema.routines) {
+      const sig = `${r.name}(${r.args})${r.returns ? ` → ${r.returns}` : ''}`;
+      out.push(`### ${sig}`, '', `Language: \`${r.language}\``, '');
+      out.push('```sql', r.body.trim(), '```', '');
+    }
+  }
+  if (schema.triggers.length) {
+    out.push('', '## Triggers', '');
+    for (const tg of schema.triggers) {
+      const table = tableOf(schema, tg.table);
+      const events = tg.events.join(', ');
+      out.push(
+        `- **${tg.name}** — ${tg.timing} ${events} on [${table?.name}](#${anchor(table?.name ?? '')}) for each ${tg.level}, executes \`${tg.functionName}()\``,
+      );
+    }
+  }
   out.push('');
 
   // per-table detail

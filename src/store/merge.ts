@@ -159,6 +159,25 @@ export function mergeSchema(prev: Schema, next: Schema): Schema {
     return { ...nv, id: pv.id, pos: pv.pos ?? nv.pos, color: nv.color ?? pv.color };
   });
 
+  // ── Functions: carry position/color/id by (namespace, name) ──
+  const carriedRoutines = next.routines.map((nr) => {
+    const pr = prev.routines.find(
+      (r) =>
+        r.namespace.toLowerCase() === nr.namespace.toLowerCase() &&
+        r.name.toLowerCase() === nr.name.toLowerCase(),
+    );
+    if (!pr) return nr;
+    return { ...nr, id: pr.id, pos: pr.pos ?? nr.pos, color: nr.color ?? pr.color };
+  });
+
+  // ── Triggers: remap the table endpoint + carry position/color by name ──
+  const carriedTriggers = next.triggers.map((nt) => {
+    const table = tableIdRemap.get(nt.table) ?? nt.table;
+    const pt = prev.triggers.find((t) => t.name.toLowerCase() === nt.name.toLowerCase());
+    if (!pt) return { ...nt, table };
+    return { ...nt, table, pos: pt.pos ?? nt.pos, color: nt.color ?? pt.color };
+  });
+
   // ── Groups: carry id/collapsed by name, re-point table.groupId ──
   const groupIdRemap = new Map<GroupId, GroupId>();
   const carriedGroups = next.groups.map((ng) => {
@@ -178,6 +197,8 @@ export function mergeSchema(prev: Schema, next: Schema): Schema {
     indexes: carriedIndexes,
     enums: carriedEnums,
     views: carriedViews,
+    routines: carriedRoutines,
+    triggers: carriedTriggers,
     groups: carriedGroups,
     notes: mergeNotes(prev, next),
     meta: { ...next.meta, createdAt: prev.meta.createdAt },

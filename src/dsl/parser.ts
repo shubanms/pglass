@@ -10,7 +10,9 @@ import {
   newIndexId,
   newNoteId,
   newRelId,
+  newRoutineId,
   newTableId,
+  newTriggerId,
   newViewId,
 } from '../model/ids.ts';
 import type {
@@ -28,6 +30,9 @@ import type {
   StickyNote,
   Table,
   TableGroup,
+  TriggerEvent,
+  TriggerLevel,
+  TriggerTiming,
   View,
 } from '../model/types.ts';
 import { arityAccepts, canonicalTypeName, isBuiltinType, lookupType } from '../sql/types.ts';
@@ -82,6 +87,7 @@ export function parse(src: string, now = '1970-01-01T00:00:00.000Z'): ParseResul
 
 class Parser {
   private toks: Token[];
+  private src: string;
   private pos = 0;
   private diags: Diagnostic[] = [];
 
@@ -89,9 +95,19 @@ class Parser {
   private currentNamespace = 'public';
   private pendingRefs: PendingRef[] = [];
   private pendingGroups: { name: string; color?: string; tables: string[] }[] = [];
+  private pendingTriggers: {
+    name: string;
+    tableName: string;
+    tableNamespace: string;
+    timing: TriggerTiming;
+    events: TriggerEvent[];
+    level: TriggerLevel;
+    functionName: string;
+  }[] = [];
   private aliasToName = new Map<string, string>(); // alias → qualified table name
 
   constructor(src: string, now: string) {
+    this.src = src;
     this.toks = lex(src);
     this.schema = {
       version: 1,
@@ -101,6 +117,8 @@ class Parser {
       indexes: [],
       enums: [],
       views: [],
+      routines: [],
+      triggers: [],
       notes: [],
       groups: [],
       namespaces: ['public'],
@@ -166,6 +184,7 @@ class Parser {
     }
     this.resolveRefs();
     this.resolveGroups();
+    this.resolveTriggers();
     // A primary-key column is implicitly NOT NULL in Postgres.
     for (const t of this.schema.tables) {
       for (const cid of t.primaryKey) {
@@ -192,6 +211,10 @@ class Parser {
         return this.parseEnum();
       case 'view':
         return this.parseView();
+      case 'function':
+        return this.parseFunction();
+      case 'trigger':
+        return this.parseTrigger();
       case 'table':
         return this.parseTable();
       case 'ref':
@@ -313,6 +336,122 @@ class Parser {
       this.eat('rbrace');
     }
     this.schema.views.push(view);
+  }
+
+  // ── function ──
+  private parseFunction() {
+    this.next(); // 'function'
+    const { namespace, name } = this.parseQualName();
+    if (!name) {
+      this.recover();
+      return;
+    }
+    // (args) — captured verbatim between the matching parens
+    let args = '';
+    if (this.at('lparen')) {
+      const open = this.next();
+      let depth = 1;
+      let endOff = open.to;
+      while (!this.at('eof') && depth > 0) {
+        const t = this.peek();
+        if (t.kind === 'lparen') depth++;
+        else if (t.kind === 'rparen') {
+          depth--;
+          if (depth === 0) {
+            endOff = t.from;
+            this.next();
+            break;
+          }
+        }
+        endOff = t.to;
+        this.next();
+      }
+      args = this.src.slice(open.to, endOff).trim();
+    }
+    // returns <type> — captured until `language` or the body brace
+    let returns = '';
+    if (this.atKeyword('returns')) {
+      const kw = this.next();
+      let endOff = kw.to;
+      while (!this.at('eof') && !this.at('lbrace') && !this.atKeyword('language')) {
+        endOff = this.peek().to;
+        this.next();
+      }
+      returns = this.src.slice(kw.to, endOff).trim();
+    }
+    let language = 'sql';
+    if (this.atKeyword('language')) {
+      this.next();
+      const l = this.parseIdent();
+      if (l) language = l;
+    }
+    let body = '';
+    if (this.eat('lbrace')) {
+      const v = this.peek();
+      if (v.kind === 'tstring' || v.kind === 'string' || v.kind === 'dstring') {
+        body = dedentBlock(v.value);
+        this.next();
+      }
+      this.eat('rbrace');
+    }
+    this.schema.routines.push({
+      id: newRoutineId(),
+      namespace,
+      name,
+      args,
+      returns,
+      language,
+      body,
+    });
+  }
+
+  // ── trigger ──
+  private parseTrigger() {
+    this.next(); // 'trigger'
+    const name = this.parseIdent();
+    if (!name) {
+      this.recover();
+      return;
+    }
+    // `on <table>`
+    let tableName = '';
+    let tableNamespace = 'public';
+    if (this.atKeyword('on')) {
+      this.next();
+      const q = this.parseQualName();
+      tableName = q.name ?? '';
+      tableNamespace = q.namespace;
+    }
+    // [timing, events…, level]
+    let timing: TriggerTiming = 'before';
+    const events: TriggerEvent[] = [];
+    let level: TriggerLevel = 'row';
+    if (this.at('lbrack')) {
+      for (const s of this.parseSettingsBlock()) {
+        const k = s.key;
+        if (k === 'before' || k === 'after' || k === 'instead of') timing = k;
+        else if (k === 'insert' || k === 'update' || k === 'delete' || k === 'truncate')
+          events.push(k);
+        else if (k === 'row' || k === 'statement') level = k;
+      }
+    }
+    // `exec <function>`
+    let functionName = '';
+    if (this.atKeyword('exec')) {
+      this.next();
+      functionName = this.parseIdent() ?? '';
+    }
+    if (tableName) {
+      this.pendingTriggers.push({
+        name,
+        tableName,
+        tableNamespace,
+        timing,
+        events: events.length ? events : ['insert'],
+        level,
+        functionName,
+      });
+    }
   }
 
   // ── table ──
@@ -958,9 +1097,39 @@ class Parser {
       this.next();
       return { key: 'pk' };
     }
+    if (
+      word === 'instead' &&
+      this.peek(1).kind === 'ident' &&
+      this.peek(1).value.toLowerCase() === 'of'
+    ) {
+      this.next();
+      this.next();
+      return { key: 'instead of' };
+    }
 
     // flag settings (no value)
-    if (['pk', 'increment', 'null', 'unique', 'materialized'].includes(word)) {
+    if (
+      [
+        'pk',
+        'increment',
+        'null',
+        'unique',
+        'materialized',
+        // trigger flags that don't collide with key:value settings
+        'before',
+        'after',
+        'insert',
+        'truncate',
+        'row',
+        'statement',
+      ].includes(word)
+    ) {
+      this.next();
+      return { key: word };
+    }
+    // `delete` / `update` are flags only in a trigger; as `delete: cascade` they
+    // are FK-action key:value settings, so only treat them as flags with no colon.
+    if ((word === 'delete' || word === 'update') && this.peek(1).kind !== 'colon') {
       this.next();
       return { key: word };
     }
@@ -1301,6 +1470,27 @@ class Parser {
     const nm = name.toLowerCase();
     return this.schema.tables.find((t) => t.name.toLowerCase() === nm);
   }
+
+  private resolveTriggers() {
+    for (const pt of this.pendingTriggers) {
+      const t =
+        this.findTable(`${pt.tableNamespace}.${pt.tableName}`) ??
+        this.findTableByBareName(pt.tableName);
+      if (!t) {
+        this.diag('error', 'PGL014', `Trigger references unknown table "${pt.tableName}"`, 0, 0);
+        continue;
+      }
+      this.schema.triggers.push({
+        id: newTriggerId(),
+        name: pt.name,
+        table: t.id,
+        timing: pt.timing,
+        events: pt.events,
+        level: pt.level,
+        functionName: pt.functionName,
+      });
+    }
+  }
 }
 
 const TOP_KEYWORDS = new Set([
@@ -1308,6 +1498,8 @@ const TOP_KEYWORDS = new Set([
   'namespace',
   'enum',
   'view',
+  'function',
+  'trigger',
   'table',
   'ref',
   'group',

@@ -8,12 +8,14 @@ import type { ColumnId, RefAction, TableId } from '../model/types.ts';
 import { viewDependencies } from '../model/views.ts';
 import { useStore } from '../store/index.ts';
 import { Edge } from './Edge.tsx';
+import { FunctionNode } from './FunctionNode.tsx';
 import { GroupLayer } from './GroupLayer.tsx';
 import { MNEdge } from './MNEdge.tsx';
 import { Minimap } from './Minimap.tsx';
 import { StickyNoteNode } from './StickyNoteNode.tsx';
 import { TableContextMenu } from './TableContextMenu.tsx';
 import { TableNode } from './TableNode.tsx';
+import { TriggerChips } from './TriggerChips.tsx';
 import { ViewNode } from './ViewNode.tsx';
 import { ViewOptions } from './ViewOptions.tsx';
 import type { Box } from './geometry.ts';
@@ -570,10 +572,28 @@ export function Canvas() {
             ))}
           </g>
 
-          {/* views (rendered above tables) */}
+          {/* views + functions (rendered above tables) */}
           <g className="views">
             {schema.views.map((v) => (
               <ViewNode key={v.id} view={v} zoom={viewport.zoom} selected={false} />
+            ))}
+          </g>
+          <g className="functions">
+            {schema.routines.map((r) => (
+              <FunctionNode key={r.id} routine={r} zoom={viewport.zoom} selected={false} />
+            ))}
+          </g>
+
+          {/* trigger chips anchored beneath their (visible) table */}
+          <g className="triggers">
+            {visibleTables.map((table) => (
+              <TriggerChips
+                key={table.id}
+                table={table}
+                triggers={schema.triggers.filter((tg) => tg.table === table.id)}
+                compact={ui.compactColumns}
+                offset={dragOffsetFor(table.id)}
+              />
             ))}
           </g>
 

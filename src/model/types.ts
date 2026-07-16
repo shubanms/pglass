@@ -9,6 +9,8 @@ export type RelId = string & { readonly __brand: 'RelId' };
 export type IndexId = string & { readonly __brand: 'IndexId' };
 export type EnumId = string & { readonly __brand: 'EnumId' };
 export type ViewId = string & { readonly __brand: 'ViewId' };
+export type RoutineId = string & { readonly __brand: 'RoutineId' };
+export type TriggerId = string & { readonly __brand: 'TriggerId' };
 export type NoteId = string & { readonly __brand: 'NoteId' };
 export type GroupId = string & { readonly __brand: 'GroupId' };
 
@@ -160,6 +162,42 @@ export interface View {
   color?: string;
 }
 
+/** A stored function/procedure. Signature parts are preserved verbatim; the
+ *  body is captured as-is. Modelled first-class (renders + round-trips). */
+export interface Routine {
+  id: RoutineId;
+  namespace: string;
+  name: string;
+  /** parameter list, verbatim, without the surrounding parens (may be empty) */
+  args: string;
+  /** RETURNS clause, verbatim (e.g. "trigger", "integer", "TABLE(...)") */
+  returns: string;
+  /** LANGUAGE (e.g. "plpgsql", "sql") */
+  language: string;
+  /** the function body, verbatim */
+  body: string;
+  pos?: { x: number; y: number };
+  color?: string;
+}
+
+export type TriggerTiming = 'before' | 'after' | 'instead of';
+export type TriggerEvent = 'insert' | 'update' | 'delete' | 'truncate';
+export type TriggerLevel = 'row' | 'statement';
+
+/** A trigger attached to a table, firing a function on table events. */
+export interface Trigger {
+  id: TriggerId;
+  name: string;
+  table: TableId;
+  timing: TriggerTiming;
+  events: TriggerEvent[];
+  level: TriggerLevel;
+  /** the function it executes (name only) */
+  functionName: string;
+  pos?: { x: number; y: number };
+  color?: string;
+}
+
 // ─── Visual-only entities ───────────────────────────────────────────────
 export interface StickyNote {
   id: NoteId;
@@ -187,6 +225,8 @@ export interface Schema {
   indexes: Index[];
   enums: EnumType[];
   views: View[];
+  routines: Routine[];
+  triggers: Trigger[];
   notes: StickyNote[];
   groups: TableGroup[];
   /** ordered list of namespaces to render/emit; "public" always present */

@@ -198,6 +198,10 @@ function usePaletteCommands(cb: {
         const v = useStore.getState().viewport;
         actions.addView({ x: -v.x / v.zoom + 80, y: -v.y / v.zoom + 80 });
       }),
+      cmd('add-function', 'Add function', () => {
+        const v = useStore.getState().viewport;
+        actions.addRoutine({ x: -v.x / v.zoom + 80, y: -v.y / v.zoom + 80 });
+      }),
       cmd('group-selection', 'Group selected tables', () => actions.groupSelection()),
       cmd('layout-layered', 'Auto-layout: layered', () => void actions.autoLayout('layered'), '⌘G'),
       cmd('layout-force', 'Auto-layout: force', () => void actions.autoLayout('force')),
@@ -634,6 +638,71 @@ function LeftPanel() {
                 )}
               </div>
             ))}
+          </>
+        )}
+        {schema.routines.length > 0 && (
+          <>
+            <div
+              className="mt-4 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Functions <span className="opacity-60">{schema.routines.length}</span>
+            </div>
+            {schema.routines.map((r) => (
+              <div
+                key={r.id}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                style={{ color: 'var(--text)' }}
+                title={`${r.name}(${r.args})${r.returns ? ` → ${r.returns}` : ''} · ${r.language}`}
+              >
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: r.color ?? '#0d9488' }}
+                />
+                <span className="truncate">{r.name}</span>
+                <span
+                  className="ml-auto shrink-0 text-[9px] font-bold uppercase"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {r.language}
+                </span>
+              </div>
+            ))}
+          </>
+        )}
+        {schema.triggers.length > 0 && (
+          <>
+            <div
+              className="mt-4 mb-1 px-2 text-[11px] font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Triggers <span className="opacity-60">{schema.triggers.length}</span>
+            </div>
+            {schema.triggers.map((tg) => {
+              const table = schema.tables.find((t) => t.id === tg.table);
+              return (
+                <div
+                  key={tg.id}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5"
+                  style={{ color: 'var(--text)' }}
+                  title={`${tg.timing} ${tg.events.join(', ')} on ${table?.name} → ${tg.functionName}()`}
+                >
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: tg.color ?? '#d97706' }}
+                  />
+                  <span className="truncate">{tg.name}</span>
+                  {table && (
+                    <span
+                      className="ml-auto shrink-0 truncate text-[9px]"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {table.name}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </>
         )}
       </div>

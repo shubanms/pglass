@@ -11,7 +11,14 @@ import { createParseScheduler } from '../dsl/parse-scheduler.ts';
 import { print } from '../dsl/printer.ts';
 import { type LayoutAlgo, autoLayout } from '../layout/auto-layout.ts';
 import { gridLayout, needsLayout } from '../layout/grid.ts';
-import { newColumnId, newGroupId, newNoteId, newTableId, newViewId } from '../model/ids.ts';
+import {
+  newColumnId,
+  newGroupId,
+  newNoteId,
+  newRoutineId,
+  newTableId,
+  newViewId,
+} from '../model/ids.ts';
 import { emptySchema } from '../model/schema.ts';
 import type {
   Column,
@@ -21,11 +28,14 @@ import type {
   NoteId,
   RelId,
   Relationship,
+  Routine,
+  RoutineId,
   Schema,
   StickyNote,
   Table,
   TableGroup,
   TableId,
+  TriggerId,
   View,
   ViewId,
 } from '../model/types.ts';
@@ -133,6 +143,13 @@ export interface Actions {
   updateView(id: ViewId, patch: Partial<View>): void;
   deleteView(id: ViewId): void;
   moveView(id: ViewId, dx: number, dy: number): void;
+
+  addRoutine(pos: { x: number; y: number }): RoutineId;
+  updateRoutine(id: RoutineId, patch: Partial<Routine>): void;
+  deleteRoutine(id: RoutineId): void;
+  moveRoutine(id: RoutineId, dx: number, dy: number): void;
+
+  deleteTrigger(id: TriggerId): void;
 
   importSqlText(sql: string): Diagnostic[];
   applyFix(d: Diagnostic): void;
@@ -577,6 +594,49 @@ export const useStore = create<AppState>()(
             });
           },
 
+          addRoutine(pos) {
+            const id = newRoutineId();
+            mutate((s) => {
+              s.routines.push({
+                id,
+                namespace: 'public',
+                name: uniqueRoutineName(s, 'new_function'),
+                args: '',
+                returns: 'void',
+                language: 'plpgsql',
+                body: 'begin\n  \nend;',
+                pos,
+              });
+            });
+            return id;
+          },
+
+          updateRoutine(id, patch) {
+            mutate((s) => {
+              const r = s.routines.find((x) => x.id === id);
+              if (r) Object.assign(r, patch);
+            });
+          },
+
+          deleteRoutine(id) {
+            mutate((s) => {
+              s.routines = s.routines.filter((r) => r.id !== id);
+            });
+          },
+
+          moveRoutine(id, dx, dy) {
+            mutate((s) => {
+              const r = s.routines.find((x) => x.id === id);
+              if (r) r.pos = { x: (r.pos?.x ?? 0) + dx, y: (r.pos?.y ?? 0) + dy };
+            });
+          },
+
+          deleteTrigger(id) {
+            mutate((s) => {
+              s.triggers = s.triggers.filter((t) => t.id !== id);
+            });
+          },
+
           importSqlText(sql) {
             const { schema, diagnostics } = importSql(sql, NOW());
             get().actions.loadSchema(schema);
@@ -716,7 +776,9 @@ function uniqueColumnName(t: Table, base: string): string {
  *  pos), placing them in a column to the right of the tables. Positions are
  *  visual-only and carried across reparses by the merge, like table positions. */
 function placeViews(schema: Schema): Schema {
-  if (schema.views.every((v) => v.pos)) return schema;
+  const needViews = schema.views.some((v) => !v.pos);
+  const needRoutines = schema.routines.some((r) => !r.pos);
+  if (!needViews && !needRoutines) return schema;
   const rightmost = schema.tables.length
     ? Math.max(...schema.tables.map((t) => t.pos.x + (t.size?.w ?? 240))) + 80
     : 40;
@@ -727,13 +789,30 @@ function placeViews(schema: Schema): Schema {
     y += 180;
     return placed;
   });
-  return { ...schema, views };
+  // functions go in the next column over so they don't overlap the views
+  const routineX = rightmost + (needViews ? 330 : 0);
+  let ry = 40;
+  const routines = schema.routines.map((r) => {
+    if (r.pos) return r;
+    const placed = { ...r, pos: { x: routineX, y: ry } };
+    ry += 180;
+    return placed;
+  });
+  return { ...schema, views, routines };
 }
 
 function uniqueViewName(s: Schema, base: string): string {
   let name = base;
   let n = 1;
   const exists = (nm: string) => s.views.some((v) => v.name.toLowerCase() === nm.toLowerCase());
+  while (exists(name)) name = `${base}_${++n}`;
+  return name;
+}
+
+function uniqueRoutineName(s: Schema, base: string): string {
+  let name = base;
+  let n = 1;
+  const exists = (nm: string) => s.routines.some((r) => r.name.toLowerCase() === nm.toLowerCase());
   while (exists(name)) name = `${base}_${++n}`;
   return name;
 }
