@@ -190,6 +190,11 @@ function usePaletteCommands(cb: {
     });
     return [
       cmd('new-table', 'New table', () => actions.addTable(), 'T'),
+      cmd('add-note', 'Add sticky note', () => {
+        const v = useStore.getState().viewport;
+        actions.addNote({ x: -v.x / v.zoom + 80, y: -v.y / v.zoom + 80 });
+      }),
+      cmd('group-selection', 'Group selected tables', () => actions.groupSelection()),
       cmd('layout-layered', 'Auto-layout: layered', () => void actions.autoLayout('layered'), '⌘G'),
       cmd('layout-force', 'Auto-layout: force', () => void actions.autoLayout('force')),
       cmd('layout-radial', 'Auto-layout: radial', () => void actions.autoLayout('radial')),

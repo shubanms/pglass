@@ -1,6 +1,16 @@
 // Right-click context menu for a table (PRD §12.4).
-import { ChevronsDownUp, ChevronsUpDown, Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Copy,
+  Group,
+  Pencil,
+  Plus,
+  Split,
+  Trash2,
+} from 'lucide-react';
 import { useEffect } from 'react';
+import { detectJunction } from '../model/junction.ts';
 import type { TableId } from '../model/types.ts';
 import { useStore } from '../store/index.ts';
 
@@ -20,7 +30,10 @@ export function TableContextMenu({
   onRename: () => void;
 }) {
   const actions = useStore((s) => s.actions);
+  const schema = useStore((s) => s.schema);
   const table = useStore((s) => s.schema.tables.find((t) => t.id === tableId));
+  const selectionSize = useStore((s) => s.selection.tables.size);
+  const isJunction = table ? detectJunction(schema, table) !== null : false;
 
   useEffect(() => {
     const onDown = () => onClose();
@@ -61,6 +74,12 @@ export function TableContextMenu({
         table.collapsed ? 'Expand' : 'Collapse',
         () => actions.updateTable(tableId, { collapsed: !table.collapsed }),
       )}
+      {selectionSize > 1 &&
+        item(<Group size={14} />, `Group ${selectionSize} tables`, () => actions.groupSelection())}
+      {isJunction &&
+        item(<Split size={14} />, table.showAsMN ? 'Show junction table' : 'Show as M:N', () =>
+          actions.toggleMN(tableId),
+        )}
       <div className="my-1 border-t" style={{ borderColor: 'var(--border)' }} />
       <div className="flex items-center gap-1.5 px-3 py-1.5">
         {SWATCHES.map((c) => (

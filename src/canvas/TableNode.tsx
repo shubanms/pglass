@@ -21,6 +21,7 @@ export function TableNode({
   lod,
   compact = false,
   dimmed = false,
+  junction = false,
   offset,
   renaming,
   linkable,
@@ -34,6 +35,8 @@ export function TableNode({
   compact?: boolean;
   /** dimmed in focus mode (not part of the spotlighted selection) */
   dimmed?: boolean;
+  /** this table is a many-to-many junction (show a subtle N:M badge) */
+  junction?: boolean;
   /** transient drag offset (not yet committed to the model) */
   offset?: { x: number; y: number };
   renaming: boolean;
@@ -133,6 +136,15 @@ export function TableNode({
           >
             {table.rowLevelSecurity && <Lock size={12} style={{ color: 'var(--text-muted)' }} />}
             <span className="truncate">{table.name}</span>
+            {junction && (
+              <span
+                className="ml-auto shrink-0 rounded px-1 text-[9px] font-bold"
+                style={{ background: 'var(--accent-soft)', color: 'var(--accent)' }}
+                title="Junction table — right-click to show as M:N"
+              >
+                N:M
+              </span>
+            )}
           </div>
         )}
       </foreignObject>

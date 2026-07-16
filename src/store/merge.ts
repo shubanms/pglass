@@ -217,6 +217,7 @@ function mergeTable(
     color: nextT.color ?? prevT.color,
     collapsed: prevT.collapsed,
     groupId: nextT.groupId ?? prevT.groupId,
+    showAsMN: prevT.showAsMN,
   };
 }
 

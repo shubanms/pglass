@@ -11,16 +11,20 @@ import { createParseScheduler } from '../dsl/parse-scheduler.ts';
 import { print } from '../dsl/printer.ts';
 import { type LayoutAlgo, autoLayout } from '../layout/auto-layout.ts';
 import { gridLayout, needsLayout } from '../layout/grid.ts';
-import { newColumnId, newTableId } from '../model/ids.ts';
+import { newColumnId, newGroupId, newNoteId, newTableId } from '../model/ids.ts';
 import { emptySchema } from '../model/schema.ts';
 import type {
   Column,
   ColumnId,
   Diagnostic,
+  GroupId,
+  NoteId,
   RelId,
   Relationship,
   Schema,
+  StickyNote,
   Table,
+  TableGroup,
   TableId,
 } from '../model/types.ts';
 import { importSql } from '../sql/import/ddl-parser.ts';
@@ -107,6 +111,21 @@ export interface Actions {
 
   addRelationship(r: Omit<Relationship, 'id'>): RelId;
   deleteRelationship(id: RelId): void;
+
+  /** flip a junction table between full and collapsed M:N rendering */
+  toggleMN(id: TableId): void;
+
+  /** group the current selection into a new TableGroup */
+  groupSelection(): void;
+  ungroup(id: GroupId): void;
+  updateGroup(id: GroupId, patch: Partial<TableGroup>): void;
+  toggleGroupCollapsed(id: GroupId): void;
+  moveGroup(id: GroupId, dx: number, dy: number): void;
+
+  addNote(pos: { x: number; y: number }): NoteId;
+  updateNote(id: NoteId, patch: Partial<StickyNote>): void;
+  deleteNote(id: NoteId): void;
+  moveNote(id: NoteId, dx: number, dy: number): void;
 
   importSqlText(sql: string): Diagnostic[];
   applyFix(d: Diagnostic): void;
@@ -427,6 +446,92 @@ export const useStore = create<AppState>()(
           deleteRelationship(id) {
             mutate((s) => {
               s.relationships = s.relationships.filter((r) => r.id !== id);
+            });
+          },
+
+          toggleMN(id) {
+            mutate((s) => {
+              const t = s.tables.find((x) => x.id === id);
+              if (t) t.showAsMN = !t.showAsMN;
+            });
+          },
+
+          groupSelection() {
+            const ids = get().selection.tables;
+            if (ids.size === 0) return;
+            const gid = newGroupId();
+            const palette = ['#4F46E5', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2'];
+            mutate((s) => {
+              const n = s.groups.length;
+              s.groups.push({
+                id: gid,
+                name: `group_${n + 1}`,
+                color: palette[n % palette.length]!,
+              });
+              for (const t of s.tables) if (ids.has(t.id)) t.groupId = gid;
+            });
+          },
+
+          ungroup(id) {
+            mutate((s) => {
+              s.groups = s.groups.filter((g) => g.id !== id);
+              for (const t of s.tables) if (t.groupId === id) t.groupId = undefined;
+            });
+          },
+
+          updateGroup(id, patch) {
+            mutate((s) => {
+              const g = s.groups.find((x) => x.id === id);
+              if (g) Object.assign(g, patch);
+            });
+          },
+
+          toggleGroupCollapsed(id) {
+            mutate((s) => {
+              const g = s.groups.find((x) => x.id === id);
+              if (g) g.collapsed = !g.collapsed;
+            });
+          },
+
+          moveGroup(id, dx, dy) {
+            mutate((s) => {
+              for (const t of s.tables) {
+                if (t.groupId === id) t.pos = { x: t.pos.x + dx, y: t.pos.y + dy };
+              }
+            });
+          },
+
+          addNote(pos) {
+            const id = newNoteId();
+            mutate((s) => {
+              s.notes.push({
+                id,
+                text: 'New note',
+                pos,
+                size: { w: 200, h: 120 },
+                color: '#fde68a',
+              });
+            });
+            return id;
+          },
+
+          updateNote(id, patch) {
+            mutate((s) => {
+              const n = s.notes.find((x) => x.id === id);
+              if (n) Object.assign(n, patch);
+            });
+          },
+
+          deleteNote(id) {
+            mutate((s) => {
+              s.notes = s.notes.filter((n) => n.id !== id);
+            });
+          },
+
+          moveNote(id, dx, dy) {
+            mutate((s) => {
+              const n = s.notes.find((x) => x.id === id);
+              if (n) n.pos = { x: n.pos.x + dx, y: n.pos.y + dy };
             });
           },
 

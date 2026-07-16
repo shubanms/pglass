@@ -3,10 +3,14 @@
 // double-click-to-create. See PRD §12.
 import { Maximize2, Minus, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { detectJunction } from '../model/junction.ts';
 import type { ColumnId, RefAction, TableId } from '../model/types.ts';
 import { useStore } from '../store/index.ts';
 import { Edge } from './Edge.tsx';
+import { GroupLayer } from './GroupLayer.tsx';
+import { MNEdge } from './MNEdge.tsx';
 import { Minimap } from './Minimap.tsx';
+import { StickyNoteNode } from './StickyNoteNode.tsx';
 import { TableContextMenu } from './TableContextMenu.tsx';
 import { TableNode } from './TableNode.tsx';
 import { ViewOptions } from './ViewOptions.tsx';
@@ -80,7 +84,29 @@ export function Canvas() {
     w: size.w / viewport.zoom,
     h: size.h / viewport.zoom,
   };
-  const visibleTables = tablesInView(schema, view);
+  // Phase 14: junctions shown as M:N and members of collapsed groups are hidden;
+  // a collapsed junction contributes a single dashed edge between its parents.
+  const { hidden, mnJunctions, junctionIds } = useMemo(() => {
+    const hidden = new Set<TableId>();
+    const collapsedGroups = new Set(schema.groups.filter((g) => g.collapsed).map((g) => g.id));
+    for (const t of schema.tables) {
+      if (t.groupId && collapsedGroups.has(t.groupId)) hidden.add(t.id);
+    }
+    const mnJunctions = [];
+    const junctionIds = new Set<TableId>();
+    for (const t of schema.tables) {
+      const j = detectJunction(schema, t);
+      if (!j) continue;
+      junctionIds.add(t.id);
+      if (t.showAsMN) {
+        hidden.add(t.id);
+        mnJunctions.push(j);
+      }
+    }
+    return { hidden, mnJunctions, junctionIds };
+  }, [schema]);
+
+  const visibleTables = tablesInView(schema, view).filter((t) => !hidden.has(t.id));
   const visibleIds = new Set(visibleTables.map((t) => t.id));
   const lod = viewport.zoom < LOD_ZOOM;
 
@@ -441,9 +467,20 @@ export function Canvas() {
         {ui.showGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
         <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.zoom})`}>
+          {/* group frames sit behind everything */}
+          <GroupLayer />
+
+          {/* sticky notes float below the tables */}
+          {schema.notes.map((note) => (
+            <StickyNoteNode key={note.id} note={note} zoom={viewport.zoom} />
+          ))}
+
           <g className="edges" style={{ ['--edge' as string]: 'var(--text-muted)' }}>
             {schema.relationships.map((rel) =>
-              visibleIds.has(rel.sourceTable) || visibleIds.has(rel.targetTable) ? (
+              // hide an edge when either endpoint is hidden (collapsed group / M:N)
+              (visibleIds.has(rel.sourceTable) || visibleIds.has(rel.targetTable)) &&
+              !hidden.has(rel.sourceTable) &&
+              !hidden.has(rel.targetTable) ? (
                 <Edge
                   key={rel.id}
                   schema={schema}
@@ -458,6 +495,10 @@ export function Canvas() {
                 />
               ) : null,
             )}
+            {/* collapsed-junction M:N edges */}
+            {mnJunctions.map((j) => (
+              <MNEdge key={j.table.id} schema={schema} junction={j} />
+            ))}
           </g>
 
           {/* ghost link edge while creating an FK */}
@@ -481,6 +522,7 @@ export function Canvas() {
                 lod={lod}
                 compact={ui.compactColumns}
                 dimmed={focusActive && !selection.tables.has(table.id)}
+                junction={junctionIds.has(table.id)}
                 offset={dragOffsetFor(table.id)}
                 renaming={renaming === table.id}
                 linkable={!!link}
