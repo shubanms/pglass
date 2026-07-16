@@ -99,7 +99,7 @@ export function App() {
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
   return (
     <div
-      className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-sm shadow-lg"
+      className="pgl-toast fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-sm shadow-lg"
       style={{
         borderColor: 'var(--border)',
         background: 'var(--bg-elevated)',
@@ -353,6 +353,22 @@ function LeftPanel() {
   );
 }
 
+const INSPECTOR_SWATCHES = ['#4F46E5', '#059669', '#dc2626', '#d97706', '#7c3aed', '#0891b2'];
+
+function parseTypeInput(input: string): { name: string; args: number[]; arrayDims: number } {
+  const arrayDims = (input.match(/\[\]/g) ?? []).length;
+  const base = input.replace(/\[\]/g, '').trim();
+  const m = /^([a-z0-9_ ]+?)\s*(?:\(([\d,\s]+)\))?$/i.exec(base);
+  if (!m) return { name: base || 'text', args: [], arrayDims };
+  const args = m[2]
+    ? m[2]
+        .split(',')
+        .map((n) => Number.parseInt(n.trim(), 10))
+        .filter((n) => !Number.isNaN(n))
+    : [];
+  return { name: (m[1] ?? 'text').trim().toLowerCase(), args, arrayDims };
+}
+
 function RightPanel() {
   const schema = useStore((s) => s.schema);
   const selectedIds = useStore((s) => s.selection.tables);
@@ -379,7 +395,7 @@ function RightPanel() {
             <input
               value={table.name}
               onChange={(e) => actions.updateTable(table.id, { name: e.target.value })}
-              className="mt-0.5 w-full rounded border px-2 py-1"
+              className="mt-0.5 w-full rounded border px-2 py-1 outline-none focus:ring-2"
               style={{
                 borderColor: 'var(--border)',
                 background: 'var(--bg-elevated)',
@@ -387,28 +403,57 @@ function RightPanel() {
               }}
             />
           </label>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5">
+              {INSPECTOR_SWATCHES.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-label={`Colour ${c}`}
+                  onClick={() => actions.updateTable(table.id, { color: c })}
+                  className="h-4 w-4 rounded-full ring-1 ring-black/10 transition-transform hover:scale-125"
+                  style={{
+                    background: c,
+                    outline: table.color === c ? '2px solid var(--text)' : 'none',
+                    outlineOffset: '1px',
+                  }}
+                />
+              ))}
+            </div>
+            <label
+              className="flex items-center gap-1.5 text-xs"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              <input
+                type="checkbox"
+                checked={!!table.rowLevelSecurity}
+                onChange={(e) =>
+                  actions.updateTable(table.id, { rowLevelSecurity: e.target.checked })
+                }
+              />
+              RLS
+            </label>
+          </div>
+
           <div>
             <div className="mb-1 text-xs" style={{ color: 'var(--text-muted)' }}>
               Columns ({table.columns.length})
             </div>
             <div className="space-y-1">
               {table.columns.map((c) => (
-                <div
+                <InspectorColumn
                   key={c.id}
-                  className="flex items-center justify-between rounded px-2 py-1"
-                  style={{ background: 'var(--bg-elevated)' }}
-                >
-                  <span className="truncate">{c.name}</span>
-                  <span className="mono text-xs" style={{ color: 'var(--text-muted)' }}>
-                    {c.type.name}
-                  </span>
-                </div>
+                  tableId={table.id}
+                  column={c}
+                  isPk={table.primaryKey.includes(c.id)}
+                />
               ))}
             </div>
             <button
               type="button"
               onClick={() => actions.addColumn(table.id)}
-              className="mt-2 w-full rounded border px-2 py-1 text-xs hover:opacity-80"
+              className="mt-2 w-full rounded border px-2 py-1 text-xs transition-transform hover:opacity-80 active:scale-[0.99]"
               style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
             >
               + Add column
@@ -418,6 +463,88 @@ function RightPanel() {
       )}
     </aside>
   );
+}
+
+function InspectorColumn({
+  tableId,
+  column,
+  isPk,
+}: {
+  tableId: TableId;
+  column: import('./model/types.ts').Column;
+  isPk: boolean;
+}) {
+  const actions = useStore((s) => s.actions);
+  const schema = useStore((s) => s.schema);
+  const [hover, setHover] = useState(false);
+
+  const togglePk = () => {
+    const t = schema.tables.find((x) => x.id === tableId);
+    if (!t) return;
+    const pk = isPk ? t.primaryKey.filter((id) => id !== column.id) : [...t.primaryKey, column.id];
+    actions.updateTable(tableId, { primaryKey: pk });
+  };
+
+  return (
+    <div
+      className="flex items-center gap-1 rounded px-1.5 py-1 transition-colors"
+      style={{ background: 'var(--bg-elevated)' }}
+      onPointerEnter={() => setHover(true)}
+      onPointerLeave={() => setHover(false)}
+    >
+      <button
+        type="button"
+        onClick={togglePk}
+        title="Toggle primary key"
+        className="shrink-0 rounded px-1 text-[10px] font-bold"
+        style={{ color: isPk ? '#d97706' : 'var(--text-muted)', opacity: isPk ? 1 : 0.4 }}
+      >
+        PK
+      </button>
+      <input
+        value={column.name}
+        onChange={(e) => actions.updateColumn(tableId, column.id, { name: e.target.value })}
+        className="min-w-0 flex-1 rounded bg-transparent px-1 outline-none focus:ring-1"
+        style={{ color: 'var(--text)' }}
+      />
+      <input
+        value={typeStrOf(column)}
+        onChange={(e) =>
+          actions.updateColumn(tableId, column.id, { type: parseTypeInput(e.target.value) })
+        }
+        className="mono w-20 shrink-0 rounded bg-transparent px-1 text-right text-[11px] outline-none focus:ring-1"
+        style={{ color: 'var(--text-muted)' }}
+      />
+      <button
+        type="button"
+        onClick={() => actions.updateColumn(tableId, column.id, { notNull: !column.notNull })}
+        title="Toggle NOT NULL"
+        className="shrink-0 rounded px-1 text-[10px] font-bold"
+        style={{
+          color: column.notNull ? 'var(--accent)' : 'var(--text-muted)',
+          opacity: column.notNull ? 1 : 0.4,
+        }}
+      >
+        NN
+      </button>
+      <button
+        type="button"
+        onClick={() => actions.deleteColumn(tableId, column.id)}
+        aria-label="Delete column"
+        className="shrink-0 rounded px-0.5"
+        style={{ color: '#dc2626', opacity: hover ? 0.9 : 0 }}
+      >
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
+function typeStrOf(c: import('./model/types.ts').Column): string {
+  let s = c.type.name;
+  if (c.type.args.length) s += `(${c.type.args.join(',')})`;
+  s += '[]'.repeat(c.type.arrayDims);
+  return s;
 }
 
 function severityColor(sev: string): string {

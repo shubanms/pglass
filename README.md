@@ -48,7 +48,15 @@ Under active construction, built in the phases described in the PRD (§18):
       kept) + crash recovery ("restored from your last session"), File System Access
       Open/Save (Ctrl+S writes straight to disk, with a download/upload fallback), and a
       diffable `.pglass` project file (zip of `schema.pgl` + `layout.json` + `meta.json`).
-- [ ] Phases 4/5/13/14 — canvas editing (drag-to-FK), image export, command palette,
+- [x] **Phase 5** — Canvas editing: drag tables to move (multi-select + snap), drag a
+      column's port to another column to create a foreign key, double-click empty canvas
+      to add a table, double-click a header (or use the context menu) to rename,
+      right-click for a table menu (add column, duplicate, collapse, recolor, delete),
+      and Delete to remove the selection. An interactive Inspector edits table name,
+      color, RLS, and per-column name/type/PK/NN inline. Subtle motion throughout —
+      dialog/menu/toast pop-ins, edge hover highlight, button press feedback — all
+      gated behind `prefers-reduced-motion`.
+- [ ] Phases 4/13/14 — parse Web Worker, image export, command palette,
       minimap, groups, service worker, and polish.
 
 ### The `.pgl` DSL
