@@ -62,8 +62,13 @@ Under active construction, built in the phases described in the PRD (§18):
       document. Model-initiated reprints apply a minimal **line-level diff**
       (`lib/diff-lines.ts`) rather than a full-document replace, so the editor
       caret never jumps when the canvas rewrites the text under you.
-- [ ] Phases 13/14 — image export, command palette,
-      minimap, groups, service worker, and polish.
+- [x] **Phase 13** — Studio polish: a **⌘K command palette** (fuzzy jump to any table
+      or run any command), the full **keyboard-shortcut** set, **image export** (theme-aware
+      SVG with a tight viewBox + PNG at 1×/2×/4×, whole-diagram or selection, transparent /
+      grid options), a high-contrast **presentation theme**, two more genuinely-good
+      **samples** (SaaS multi-tenant, Northwind), and an offline **service worker** so the
+      app keeps working with the network pulled.
+- [ ] Phase 14 — minimap, table groups, sticky notes, M:N junction collapse.
 
 ### The `.pgl` DSL
 
@@ -72,6 +77,23 @@ See [`public/samples/ecommerce.pgl`](./public/samples/ecommerce.pgl) for a worke
 example and the PRD §5 for the full grammar. The parser never throws — it always
 returns a (possibly partial) schema plus diagnostics — and the printer is
 byte-stable so git diffs stay clean.
+
+### Keyboard shortcuts
+
+```
+⌘K   command palette        ⌘S   save
+⌘Z   undo                   ⇧⌘Z  redo
+⌘\   toggle editor pane     ⌘B   toggle table list
+⌘/   toggle bottom panel    ⌘E   export code
+⌘D   duplicate selection    ⌘A   select all tables
+⌘F   find (in editor)       ⌘G   auto-layout
+F    zoom to fit            1    zoom 100%
+T    new table              Delete  delete selection
+Esc  clear selection        ⇧F   focus on selection
+```
+
+Everything is also reachable from the ⌘K palette. The app ships a service
+worker, so after one online visit it runs fully offline.
 
 ## Local setup
 

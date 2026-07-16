@@ -252,6 +252,53 @@ export function Canvas() {
     if (fitNonce > 0 && size.w > 1) zoomToFit();
   }, [fitNonce]);
 
+  // Shift+F focus: fit the viewport to the current selection (or the whole
+  // diagram when nothing is selected).
+  const focusNonce = useStore((s) => s.focusNonce);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to nonce bumps
+  useEffect(() => {
+    if (focusNonce === 0 || size.w <= 1) return;
+    const sel = useStore.getState().selection.tables;
+    const targets = sel.size > 0 ? schema.tables.filter((t) => sel.has(t.id)) : schema.tables;
+    if (targets.length === 0) return;
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const t of targets) {
+      const b = tableBox(t);
+      minX = Math.min(minX, b.x);
+      minY = Math.min(minY, b.y);
+      maxX = Math.max(maxX, b.x + b.w);
+      maxY = Math.max(maxY, b.y + b.h);
+    }
+    const bw = maxX - minX + 120;
+    const bh = maxY - minY + 120;
+    const zoom = Math.min(1.6, Math.min(size.w / bw, size.h / bh));
+    actions.setViewport({
+      zoom,
+      x: size.w / 2 - (minX + (maxX - minX) / 2) * zoom,
+      y: size.h / 2 - (minY + (maxY - minY) / 2) * zoom,
+    });
+  }, [focusNonce]);
+
+  // Palette "jump to table": pan the requested table to the centre at a
+  // comfortable zoom without disrupting the rest of the diagram.
+  const reveal = useStore((s) => s.reveal);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: react only to nonce bumps
+  useEffect(() => {
+    if (!reveal || size.w <= 1) return;
+    const t = schema.tables.find((x) => x.id === reveal.table);
+    if (!t) return;
+    const b = tableBox(t);
+    const zoom = Math.min(1.2, Math.max(0.6, useStore.getState().viewport.zoom));
+    actions.setViewport({
+      zoom,
+      x: size.w / 2 - (b.x + b.w / 2) * zoom,
+      y: size.h / 2 - (b.y + b.h / 2) * zoom,
+    });
+  }, [reveal?.nonce]);
+
   // keyboard: F fit, 1 100%, Delete removes selection
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -262,7 +309,7 @@ export function Canvas() {
           e.target.tagName === 'INPUT')
       )
         return;
-      if (e.key === 'f' || e.key === 'F') zoomToFit();
+      if ((e.key === 'f' || e.key === 'F') && !e.shiftKey) zoomToFit();
       if (e.key === '1') actions.setViewport({ zoom: 1 });
       if (e.key === 'Escape') {
         setMenu(null);
@@ -304,10 +351,14 @@ export function Canvas() {
   return (
     <div
       ref={ref}
-      className="relative min-h-0 flex-1 overflow-hidden"
+      className="relative min-h-0 flex-1 select-none overflow-hidden"
       style={{
         background: 'var(--canvas-bg)',
         cursor: gesture.current?.kind === 'pan' ? 'grabbing' : 'default',
+        // never let a drag (esp. from a column's FK port) start a text
+        // selection in the foreignObject rows
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
       }}
     >
       <svg

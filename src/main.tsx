@@ -11,3 +11,11 @@ createRoot(root).render(
     <App />
   </StrictMode>,
 );
+
+// Register the offline service worker in production only (a dev SW would fight
+// Vite's HMR). See public/sw.js.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => {});
+  });
+}

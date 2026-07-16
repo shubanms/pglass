@@ -50,6 +50,32 @@
   color-scheme: dark;
 }
 
+/* High-contrast, larger-type theme for screenshots / projectors (PRD §15.3). */
+:root[data-theme="presentation"] {
+  --bg: #ffffff;
+  --bg-panel: #ffffff;
+  --bg-elevated: #ffffff;
+  --border: #000000;
+  --text: #000000;
+  --text-muted: #333333;
+  --accent: #1d4ed8;
+  --canvas-bg: #ffffff;
+  --canvas-grid: #d4d4d4;
+
+  --cm-keyword: #6d28d9;
+  --cm-type: #0369a1;
+  --cm-setting: #b45309;
+  --cm-ident: #000000;
+  --cm-string: #047857;
+  --cm-number: #be185d;
+  --cm-operator: #6d28d9;
+  --cm-comment: #6b7280;
+  --cm-punct: #333333;
+
+  color-scheme: light;
+  font-size: 17px;
+}
+
 html,
 body,
 #root {

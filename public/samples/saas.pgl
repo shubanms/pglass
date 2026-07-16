@@ -1,0 +1,115 @@
+project 'Multi-tenant SaaS' {
+  description: 'Organizations, members, projects, billing — row-per-tenant'
+}
+
+enum invoice_status {
+  draft
+  open
+  paid
+  void
+  uncollectible
+}
+
+enum member_role {
+  owner
+  admin
+  member
+  viewer
+}
+
+enum plan_tier {
+  free
+  pro
+  business
+  enterprise
+}
+
+table organizations [color: #4F46E5] {
+  id          uuid         [pk, default: `gen_random_uuid()`]
+  slug        citext       [not null, unique]
+  name        varchar(160) [not null]
+  plan        plan_tier    [not null, default: 'free']
+  created_at  timestamptz  [not null, default: `now()`]
+  deleted_at  timestamptz
+
+  note: 'The tenant root — everything scopes to organization_id'
+}
+
+table users [color: #4F46E5] {
+  id          uuid        [pk, default: `gen_random_uuid()`]
+  email       citext      [not null, unique]
+  full_name   varchar(160)
+  created_at  timestamptz [not null, default: `now()`]
+
+  indexes {
+    (email) [unique, name: 'users_email_key']
+  }
+}
+
+table memberships [color: #7c3aed] {
+  id               uuid        [pk, default: `gen_random_uuid()`]
+  organization_id  uuid        [not null, ref: > organizations.id [delete: cascade]]
+  user_id          uuid        [not null, ref: > users.id [delete: cascade]]
+  role             member_role [not null, default: 'member']
+  invited_at       timestamptz [not null, default: `now()`]
+  accepted_at      timestamptz
+
+  indexes {
+    (organization_id, user_id) [unique, name: 'memberships_org_user_key']
+    (user_id)
+  }
+}
+
+table projects [color: #059669] {
+  id               uuid         [pk, default: `gen_random_uuid()`]
+  organization_id  uuid         [not null, ref: > organizations.id [delete: cascade]]
+  name             varchar(160) [not null]
+  archived         boolean      [not null, default: false]
+  created_at       timestamptz  [not null, default: `now()`]
+
+  indexes {
+    (organization_id, archived)
+  }
+}
+
+table api_keys [color: #059669] {
+  id               uuid         [pk, default: `gen_random_uuid()`]
+  organization_id  uuid         [not null, ref: > organizations.id [delete: cascade]]
+  name             varchar(120) [not null]
+  hashed_key       text         [not null, unique]
+  last_used_at     timestamptz
+  revoked_at       timestamptz
+  created_at       timestamptz  [not null, default: `now()`]
+}
+
+table subscriptions [color: #d97706] {
+  id                    uuid        [pk, default: `gen_random_uuid()`]
+  organization_id       uuid        [not null, unique, ref: - organizations.id [delete: cascade]]
+  plan                  plan_tier   [not null]
+  seats                 integer     [not null, default: 1, check: 'seats > 0']
+  current_period_end    timestamptz [not null]
+  cancel_at_period_end  boolean     [not null, default: false]
+}
+
+table invoices [color: #d97706] {
+  id               uuid           [pk, default: `gen_random_uuid()`]
+  organization_id  uuid           [not null, ref: > organizations.id [delete: cascade]]
+  status           invoice_status [not null, default: 'draft']
+  amount_cents     integer        [not null, check: 'amount_cents >= 0']
+  issued_at        timestamptz    [not null, default: `now()`]
+  paid_at          timestamptz
+
+  indexes {
+    (organization_id, issued_at desc)
+  }
+}
+
+group tenant [color: #4F46E5] {
+  organizations
+  memberships
+}
+
+group billing [color: #d97706] {
+  subscriptions
+  invoices
+}

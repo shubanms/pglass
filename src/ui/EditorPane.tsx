@@ -3,6 +3,7 @@ import { autocompletion } from '@codemirror/autocomplete';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { bracketMatching, indentOnInput } from '@codemirror/language';
 import { lintGutter } from '@codemirror/lint';
+import { highlightSelectionMatches, search, searchKeymap } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { useEffect, useRef } from 'react';
@@ -29,10 +30,12 @@ export function EditorPane() {
         bracketMatching(),
         indentOnInput(),
         lintGutter(),
+        search({ top: true }),
+        highlightSelectionMatches(),
         pgl(),
         pglLinter(),
         autocompletion({ override: [pglAutocomplete(() => useStore.getState().schema)] }),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         EditorView.theme({
           '&': { height: '100%', fontSize: '13px' },
           '.cm-scroller': { fontFamily: "'JetBrains Mono', ui-monospace, monospace" },

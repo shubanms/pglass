@@ -17,13 +17,16 @@ import { parse } from './dsl/parser.ts';
 import { lint, sortDiagnostics } from './lint/engine.ts';
 import type { Diagnostic, Table, TableId } from './model/types.ts';
 import { useStore } from './store/index.ts';
+import { CommandPalette, type PaletteItem } from './ui/CommandPalette.tsx';
 import { DiffDialog } from './ui/DiffDialog.tsx';
 import { EditorPane } from './ui/EditorPane.tsx';
+import { ExportImageDialog } from './ui/ExportImageDialog.tsx';
 import { GenerateDialog } from './ui/GenerateDialog.tsx';
 import { ImportDialog } from './ui/ImportDialog.tsx';
 import { type Persistence, usePersistence } from './ui/usePersistence.ts';
+import { useShortcuts } from './ui/useShortcuts.ts';
 
-type DialogKind = 'import' | 'export' | 'diff' | null;
+type DialogKind = 'import' | 'export' | 'diff' | 'image' | null;
 const DialogCtx = createContext<(d: DialogKind) => void>(() => {});
 const PersistCtx = createContext<Persistence | null>(null);
 
@@ -35,7 +38,7 @@ function useAppliedTheme() {
         ? window.matchMedia('(prefers-color-scheme: dark)').matches
           ? 'dark'
           : 'light'
-        : theme;
+        : theme; // 'light' | 'dark' | 'presentation' pass through
     document.documentElement.dataset.theme = resolve();
     if (theme === 'system') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -53,7 +56,30 @@ export function App() {
   const ui = useStore((s) => s.ui);
   const hasTables = useStore((s) => s.schema.tables.length > 0);
   const [dialog, setDialog] = useState<DialogKind>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const persist = usePersistence();
+
+  const shortcutHandlers = useMemo(
+    () => ({
+      openPalette: () => setPaletteOpen(true),
+      openImport: () => setDialog('import'),
+      openExport: () => setDialog('export'),
+      openDiff: () => setDialog('diff'),
+      openImage: () => setDialog('image'),
+      save: () => persist.save(),
+    }),
+    [persist],
+  );
+  useShortcuts(shortcutHandlers);
+
+  const commands = usePaletteCommands({
+    openImport: () => setDialog('import'),
+    openExport: () => setDialog('export'),
+    openImage: () => setDialog('image'),
+    openDiff: () => setDialog('diff'),
+    save: () => persist.save(),
+    open: () => persist.open(),
+  });
 
   return (
     <PersistCtx.Provider value={persist}>
@@ -90,10 +116,70 @@ export function App() {
         {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
         {dialog === 'export' && <GenerateDialog onClose={() => setDialog(null)} />}
         {dialog === 'diff' && <DiffDialog onClose={() => setDialog(null)} />}
+        {dialog === 'image' && <ExportImageDialog onClose={() => setDialog(null)} />}
+        {paletteOpen && (
+          <CommandPalette commands={commands} onClose={() => setPaletteOpen(false)} />
+        )}
         {persist.toast && <Toast message={persist.toast} onClose={persist.dismissToast} />}
       </DialogCtx.Provider>
     </PersistCtx.Provider>
   );
+}
+
+function usePaletteCommands(cb: {
+  openImport: () => void;
+  openExport: () => void;
+  openImage: () => void;
+  openDiff: () => void;
+  save: () => void;
+  open: () => void;
+}): PaletteItem[] {
+  const actions = useStore((s) => s.actions);
+  const theme = useStore((s) => s.ui.theme);
+  return useMemo(() => {
+    const cmd = (id: string, label: string, run: () => void, hint?: string): PaletteItem => ({
+      id,
+      label,
+      hint,
+      group: 'Command',
+      run,
+    });
+    return [
+      cmd('new-table', 'New table', () => actions.addTable(), 'T'),
+      cmd('layout-layered', 'Auto-layout: layered', () => void actions.autoLayout('layered'), '⌘G'),
+      cmd('layout-force', 'Auto-layout: force', () => void actions.autoLayout('force')),
+      cmd('layout-radial', 'Auto-layout: radial', () => void actions.autoLayout('radial')),
+      cmd('fit', 'Zoom to fit', () => actions.requestFit(), 'F'),
+      cmd('focus', 'Focus selection', () => actions.focusSelection(), '⇧F'),
+      cmd('select-all', 'Select all tables', () => actions.selectAllTables(), '⌘A'),
+      cmd('duplicate', 'Duplicate selection', () => actions.duplicateSelection(), '⌘D'),
+      cmd('import', 'Import SQL…', cb.openImport),
+      cmd('export', 'Export code…', cb.openExport, '⌘E'),
+      cmd('image', 'Export image…', cb.openImage),
+      cmd('diff', 'Diff schemas…', cb.openDiff),
+      cmd('save', 'Save project', cb.save, '⌘S'),
+      cmd('open', 'Open project…', cb.open),
+      cmd('undo', 'Undo', () => actions.undo(), '⌘Z'),
+      cmd('redo', 'Redo', () => actions.redo(), '⇧⌘Z'),
+      cmd('theme-dark', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme', () =>
+        actions.setUi('theme', theme === 'dark' ? 'light' : 'dark'),
+      ),
+      cmd('theme-presentation', 'Presentation theme (high contrast)', () =>
+        actions.setUi('theme', 'presentation'),
+      ),
+      cmd('toggle-editor', 'Toggle editor pane', () =>
+        actions.setUi(
+          'editorPane',
+          useStore.getState().ui.editorPane === 'hidden' ? 'split' : 'hidden',
+        ),
+      ),
+      cmd('toggle-left', 'Toggle table list', () => actions.toggleUi('leftPanel')),
+      cmd('toggle-bottom', 'Toggle diagnostics panel', () => {
+        const bp = useStore.getState().ui.bottomPanel;
+        actions.setUi('bottomPanel', { open: !bp.open, tab: bp.tab });
+      }),
+    ];
+  }, [actions, theme, cb]);
 }
 
 function Toast({ message, onClose }: { message: string; onClose: () => void }) {
@@ -635,10 +721,15 @@ function BottomPanel() {
   );
 }
 
-const SAMPLES = ['ecommerce'] as const;
+const SAMPLES: { id: string; label: string }[] = [
+  { id: 'ecommerce', label: 'Ecommerce' },
+  { id: 'saas', label: 'SaaS multi-tenant' },
+  { id: 'northwind', label: 'Northwind' },
+];
 
 function EmptyState() {
   const actions = useStore((s) => s.actions);
+  const setDialog = useContext(DialogCtx);
   const loadSample = async (name: string) => {
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}samples/${name}.pgl`);
@@ -653,7 +744,7 @@ function EmptyState() {
       className="flex min-h-0 flex-1 items-center justify-center"
       style={{ background: 'var(--canvas-bg)' }}
     >
-      <div className="text-center">
+      <div className="max-w-md text-center">
         <Database
           size={40}
           className="mx-auto mb-3 opacity-40"
@@ -663,26 +754,41 @@ function EmptyState() {
           Start designing
         </p>
         <p className="mb-4 text-sm" style={{ color: 'var(--text-muted)' }}>
-          Create a table, or open a sample schema.
+          Create a table from scratch, import existing SQL, or open a sample schema. Press{' '}
+          <kbd className="mono">⌘K</kbd> any time for the command palette.
         </p>
-        <div className="flex justify-center gap-2">
+        <div className="mb-3 flex justify-center gap-2">
           <button
             type="button"
             onClick={() => actions.addTable()}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-white"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-white transition-transform active:scale-[0.98]"
             style={{ background: 'var(--accent)' }}
           >
             New table
           </button>
+          <button
+            type="button"
+            onClick={() => setDialog('import')}
+            className="rounded-md border px-3 py-1.5 text-sm transition-transform active:scale-[0.98]"
+            style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
+          >
+            Import SQL
+          </button>
+        </div>
+        <div
+          className="flex flex-wrap justify-center gap-2 text-xs"
+          style={{ color: 'var(--text-muted)' }}
+        >
+          <span className="self-center">Samples:</span>
           {SAMPLES.map((s) => (
             <button
-              key={s}
+              key={s.id}
               type="button"
-              onClick={() => loadSample(s)}
-              className="rounded-md border px-3 py-1.5 text-sm capitalize"
+              onClick={() => loadSample(s.id)}
+              className="rounded-md border px-2.5 py-1 transition-transform hover:opacity-80 active:scale-[0.98]"
               style={{ borderColor: 'var(--border)', color: 'var(--text)' }}
             >
-              {s} sample
+              {s.label}
             </button>
           ))}
         </div>

@@ -1,0 +1,97 @@
+project 'Northwind' {
+  description: 'The classic orders / products / customers demo schema'
+}
+
+table categories [color: #059669] {
+  id           bigint      [pk, increment]
+  name         varchar(80) [not null]
+  description  text
+}
+
+table suppliers [color: #0891b2] {
+  id            bigint       [pk, increment]
+  company_name  varchar(160) [not null]
+  contact_name  varchar(120)
+  country       varchar(80)
+  phone         varchar(40)
+}
+
+table products [color: #059669] {
+  id              bigint        [pk, increment]
+  name            varchar(160)  [not null]
+  category_id     bigint        [ref: > categories.id [delete: set null]]
+  supplier_id     bigint        [ref: > suppliers.id [delete: set null]]
+  unit_price      numeric(10,2) [not null, default: 0, check: 'unit_price >= 0']
+  units_in_stock  integer       [not null, default: 0]
+  discontinued    boolean       [not null, default: false]
+
+  indexes {
+    (category_id)
+    (supplier_id)
+  }
+}
+
+table customers [color: #4F46E5] {
+  id            bigint       [pk, increment]
+  company_name  varchar(160) [not null]
+  contact_name  varchar(120)
+  city          varchar(80)
+  country       varchar(80)
+}
+
+table employees [color: #7c3aed] {
+  id          bigint      [pk, increment]
+  first_name  varchar(80) [not null]
+  last_name   varchar(80) [not null]
+  title       varchar(120)
+  reports_to  bigint      [ref: > employees.id [delete: set null]]
+  hired_at    date
+}
+
+table shippers [color: #0891b2] {
+  id            bigint       [pk, increment]
+  company_name  varchar(160) [not null]
+  phone         varchar(40)
+}
+
+table orders [color: #d97706] {
+  id           bigint        [pk, increment]
+  customer_id  bigint        [not null, ref: > customers.id [delete: restrict]]
+  employee_id  bigint        [ref: > employees.id [delete: set null]]
+  shipper_id   bigint        [ref: > shippers.id [delete: set null]]
+  ordered_at   timestamptz   [not null, default: `now()`]
+  shipped_at   timestamptz
+  freight      numeric(10,2) [not null, default: 0]
+
+  indexes {
+    (customer_id, ordered_at desc)
+  }
+}
+
+table order_details [color: #d97706] {
+  order_id    bigint        [not null, ref: > orders.id [delete: cascade]]
+  product_id  bigint        [not null, ref: > products.id [delete: restrict]]
+  unit_price  numeric(10,2) [not null]
+  quantity    integer       [not null, default: 1]
+  discount    numeric(4,2)  [not null, default: 0]
+
+  indexes {
+    (order_id, product_id) [pk]
+  }
+
+  checks {
+    'quantity > 0'                    [name: 'order_details_qty_positive']
+    'discount >= 0 and discount <= 1' [name: 'order_details_discount_range']
+  }
+}
+
+group catalog [color: #059669] {
+  categories
+  suppliers
+  products
+}
+
+group sales [color: #d97706] {
+  orders
+  order_details
+}

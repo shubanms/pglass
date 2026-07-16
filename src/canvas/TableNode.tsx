@@ -211,7 +211,12 @@ function RenameInput({
       }}
       onBlur={() => onCommit(value.trim() || initial)}
       className="h-full w-full rounded bg-transparent px-2.5 text-[13px] font-semibold outline-none"
-      style={{ color: 'var(--text)', boxShadow: 'inset 0 0 0 2px var(--accent)' }}
+      style={{
+        color: 'var(--text)',
+        boxShadow: 'inset 0 0 0 2px var(--accent)',
+        userSelect: 'text',
+        WebkitUserSelect: 'text',
+      }}
     />
   );
 }
