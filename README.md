@@ -56,7 +56,13 @@ Under active construction, built in the phases described in the PRD (§18):
       color, RLS, and per-column name/type/PK/NN inline. Subtle motion throughout —
       dialog/menu/toast pop-ins, edge hover highlight, button press feedback — all
       gated behind `prefers-reduced-motion`.
-- [ ] Phases 4/13/14 — parse Web Worker, image export, command palette,
+- [x] **Phase 4** — Non-blocking sync loop: DSL parsing runs in a code-split Web
+      Worker (`dsl/parse.worker.ts`), debounced 200ms with a monotonic request id
+      so stale parses are dropped and the main thread never blocks on a large
+      document. Model-initiated reprints apply a minimal **line-level diff**
+      (`lib/diff-lines.ts`) rather than a full-document replace, so the editor
+      caret never jumps when the canvas rewrites the text under you.
+- [ ] Phases 13/14 — image export, command palette,
       minimap, groups, service worker, and polish.
 
 ### The `.pgl` DSL
