@@ -76,7 +76,15 @@ Under active construction, built in the phases described in the PRD (§18):
       popover, and previously-hidden toggles wired up — compact columns, focus-mode
       spotlight, edge style, grid/snap. Dragging from a column's FK port no longer selects
       row text.
-- [ ] Phase 14 — table groups, sticky notes, M:N junction collapse.
+- [x] **Phase 14** — Canvas annotations: **table groups** (a tinted frame around
+      members with rename / collapse / ungroup — `canvas/GroupLayer.tsx`), **sticky notes**
+      (draggable, editable, recolourable markdown cards — `canvas/StickyNoteNode.tsx`), and
+      **M:N junction collapse** — a link table (2 FKs, PK = the FK union, ≤2 extra columns;
+      `model/junction.ts`) shows a subtle `N:M` badge and can collapse into a single dashed
+      edge between its parents. Groups and notes round-trip through the `.pgl` DSL; the M:N
+      flag is visual-only and survives merges.
+
+**All phases from the PRD build order (§18) are now complete.**
 
 ### The `.pgl` DSL
 

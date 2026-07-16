@@ -69,6 +69,9 @@ export interface Table {
   color?: string; // header accent
   collapsed?: boolean;
   groupId?: GroupId;
+  /** visual: render this junction table as a single M:N edge between its parents
+   *  (PRD §12.3). A UI flag — not emitted to the DSL, preserved across merges. */
+  showAsMN?: boolean;
 }
 
 // ─── Relationships ──────────────────────────────────────────────────────
