@@ -44,7 +44,12 @@ Under active construction, built in the phases described in the PRD (§18):
 - [x] **Phase 8** — Auto-layout: elkjs (layered / force / radial), selection-only
       layout, and zoom-to-fit — code-split so elkjs loads on demand. Replaces the grid
       stopgap; wired to the Layout menu.
-- [ ] Phases 4/5/9/13/14 — canvas editing (drag-to-FK), persistence, and polish.
+- [x] **Phase 9** — Persistence: Dexie IndexedDB autosave (debounced) + snapshots (50
+      kept) + crash recovery ("restored from your last session"), File System Access
+      Open/Save (Ctrl+S writes straight to disk, with a download/upload fallback), and a
+      diffable `.pglass` project file (zip of `schema.pgl` + `layout.json` + `meta.json`).
+- [ ] Phases 4/5/13/14 — canvas editing (drag-to-FK), image export, command palette,
+      minimap, groups, service worker, and polish.
 
 ### The `.pgl` DSL
 
