@@ -30,7 +30,7 @@ enableMapSet();
 
 export type BottomTab = 'diagnostics' | 'lint' | 'diff' | 'generated';
 export type EditorPane = 'hidden' | 'split' | 'full';
-export type Theme = 'light' | 'dark' | 'system';
+export type Theme = 'light' | 'dark' | 'system' | 'presentation';
 export type EdgeStyle = 'orthogonal' | 'bezier' | 'straight';
 
 export interface UiState {
@@ -63,6 +63,10 @@ export interface AppState {
   stale: boolean;
   /** bumped to ask the canvas to zoom-to-fit (after layout / load) */
   fitNonce: number;
+  /** set to ask the canvas to pan a specific table into view (palette jump) */
+  reveal: { table: TableId; nonce: number } | null;
+  /** bumped to ask the canvas to fit the current selection (Shift+F) */
+  focusNonce: number;
 
   viewport: { x: number; y: number; zoom: number };
   selection: Selection;
@@ -93,9 +97,14 @@ export interface Actions {
   autoLayout(algo: LayoutAlgo, selectionOnly?: boolean): Promise<void>;
 
   selectTable(id: TableId, additive?: boolean): void;
+  revealTable(id: TableId): void;
+  selectAllTables(): void;
+  duplicateSelection(): void;
   clearSelection(): void;
 
   setViewport(v: Partial<{ x: number; y: number; zoom: number }>): void;
+  requestFit(): void;
+  focusSelection(): void;
   toggleUi<K extends keyof UiState>(key: K): void;
   setUi<K extends keyof UiState>(key: K, value: UiState[K]): void;
 
@@ -164,6 +173,8 @@ export const useStore = create<AppState>()(
         diagnostics: [],
         stale: false,
         fitNonce: 0,
+        reveal: null,
+        focusNonce: 0,
 
         viewport: { x: 0, y: 0, zoom: 1 },
         selection: { tables: new Set(), columns: new Set(), rels: new Set() },
@@ -386,12 +397,45 @@ export const useStore = create<AppState>()(
             });
           },
 
+          revealTable(id) {
+            set((state) => ({
+              selection: { ...state.selection, tables: new Set([id]) },
+              reveal: { table: id, nonce: (state.reveal?.nonce ?? 0) + 1 },
+            }));
+          },
+
+          selectAllTables() {
+            set((state) => ({
+              selection: {
+                ...state.selection,
+                tables: new Set(state.schema.tables.map((t) => t.id)),
+              },
+            }));
+          },
+
+          duplicateSelection() {
+            const ids = [...get().selection.tables];
+            if (ids.length === 0) return;
+            const created = ids.map((id) => get().actions.duplicateTable(id));
+            set((state) => ({
+              selection: { ...state.selection, tables: new Set(created) },
+            }));
+          },
+
           clearSelection() {
             set({ selection: { tables: new Set(), columns: new Set(), rels: new Set() } });
           },
 
           setViewport(v) {
             set((state) => ({ viewport: { ...state.viewport, ...v } }));
+          },
+
+          requestFit() {
+            set((st) => ({ fitNonce: st.fitNonce + 1 }));
+          },
+
+          focusSelection() {
+            set((st) => ({ focusNonce: st.focusNonce + 1 }));
           },
 
           toggleUi(key) {

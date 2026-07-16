@@ -25,3 +25,16 @@ describe('ecommerce sample', () => {
     expect(print(parse(text).schema)).toBe(text);
   });
 });
+
+describe.each(['saas', 'northwind'])('%s sample', (name) => {
+  const src = readFileSync(resolve(process.cwd(), `public/samples/${name}.pgl`), 'utf8');
+
+  it('parses with zero error diagnostics', () => {
+    const { diagnostics } = parse(src);
+    expect(diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+  });
+
+  it('round-trips byte-exactly (the sample is canonical)', () => {
+    expect(print(parse(src).schema)).toBe(src);
+  });
+});
