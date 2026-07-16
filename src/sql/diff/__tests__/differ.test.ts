@@ -54,7 +54,8 @@ describe('diff engine — basic ops', () => {
 
 describe('diff engine — the nasty cases (§17)', () => {
   it('FK-blocked type change: emits drop-FK → alter type → re-add FK, in order', () => {
-    const src = `table users {\n  id bigint [pk]\n}\n\ntable orders {\n  id bigint [pk]\n  user_id bigint [not null, ref: > users.id]\n}\n`;
+    const src =
+      'table users {\n  id bigint [pk]\n}\n\ntable orders {\n  id bigint [pk]\n  user_id bigint [not null, ref: > users.id]\n}\n';
     const r = pglDiff(src, (s) => {
       const orders = s.tables.find((t) => t.name === 'orders')!;
       const uid = orders.columns.find((c) => c.name === 'user_id')!;
@@ -139,7 +140,7 @@ describe('diff engine — the nasty cases (§17)', () => {
   });
 
   it('PK change drops then adds the primary key constraint', () => {
-    const src = `table t {\n  a bigint [pk]\n  b bigint\n}\n`;
+    const src = 'table t {\n  a bigint [pk]\n  b bigint\n}\n';
     const r = pglDiff(src, (s) => {
       const t = s.tables[0]!;
       t.primaryKey = [t.columns.find((c) => c.name === 'b')!.id];

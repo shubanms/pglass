@@ -3,10 +3,13 @@ import {
   Database,
   FileDown,
   FileUp,
+  FolderOpen,
   GitCompare,
   LayoutGrid,
   Moon,
+  Save,
   Sun,
+  X,
 } from 'lucide-react';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Canvas } from './canvas/Canvas.tsx';
@@ -18,9 +21,11 @@ import { DiffDialog } from './ui/DiffDialog.tsx';
 import { EditorPane } from './ui/EditorPane.tsx';
 import { GenerateDialog } from './ui/GenerateDialog.tsx';
 import { ImportDialog } from './ui/ImportDialog.tsx';
+import { type Persistence, usePersistence } from './ui/usePersistence.ts';
 
 type DialogKind = 'import' | 'export' | 'diff' | null;
 const DialogCtx = createContext<(d: DialogKind) => void>(() => {});
+const PersistCtx = createContext<Persistence | null>(null);
 
 function useAppliedTheme() {
   const theme = useStore((s) => s.ui.theme);
@@ -48,42 +53,69 @@ export function App() {
   const ui = useStore((s) => s.ui);
   const hasTables = useStore((s) => s.schema.tables.length > 0);
   const [dialog, setDialog] = useState<DialogKind>(null);
+  const persist = usePersistence();
 
   return (
-    <DialogCtx.Provider value={setDialog}>
-      <div className="flex h-full flex-col">
-        <TopBar />
-        <div className="flex min-h-0 flex-1">
-          {ui.leftPanel && <LeftPanel />}
-          <main className="flex min-w-0 flex-1 flex-col">
-            <div className="flex min-h-0 flex-1">
-              {ui.editorPane !== 'hidden' && ui.editorPane !== 'full' && hasTables && (
-                <div
-                  className="w-[42%] min-w-[280px] max-w-[560px] border-r"
-                  style={{ borderColor: 'var(--border)' }}
-                >
-                  <EditorPane />
-                </div>
-              )}
-              {ui.editorPane === 'full' ? (
-                <div className="min-h-0 flex-1">
-                  <EditorPane />
-                </div>
-              ) : hasTables ? (
-                <Canvas />
-              ) : (
-                <EmptyState />
-              )}
-            </div>
-            <BottomPanel />
-          </main>
-          {ui.rightPanel && <RightPanel />}
+    <PersistCtx.Provider value={persist}>
+      <DialogCtx.Provider value={setDialog}>
+        <div className="flex h-full flex-col">
+          <TopBar />
+          <div className="flex min-h-0 flex-1">
+            {ui.leftPanel && <LeftPanel />}
+            <main className="flex min-w-0 flex-1 flex-col">
+              <div className="flex min-h-0 flex-1">
+                {ui.editorPane !== 'hidden' && ui.editorPane !== 'full' && hasTables && (
+                  <div
+                    className="w-[42%] min-w-[280px] max-w-[560px] border-r"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <EditorPane />
+                  </div>
+                )}
+                {ui.editorPane === 'full' ? (
+                  <div className="min-h-0 flex-1">
+                    <EditorPane />
+                  </div>
+                ) : hasTables ? (
+                  <Canvas />
+                ) : (
+                  <EmptyState />
+                )}
+              </div>
+              <BottomPanel />
+            </main>
+            {ui.rightPanel && <RightPanel />}
+          </div>
         </div>
-      </div>
-      {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
-      {dialog === 'export' && <GenerateDialog onClose={() => setDialog(null)} />}
-      {dialog === 'diff' && <DiffDialog onClose={() => setDialog(null)} />}
-    </DialogCtx.Provider>
+        {dialog === 'import' && <ImportDialog onClose={() => setDialog(null)} />}
+        {dialog === 'export' && <GenerateDialog onClose={() => setDialog(null)} />}
+        {dialog === 'diff' && <DiffDialog onClose={() => setDialog(null)} />}
+        {persist.toast && <Toast message={persist.toast} onClose={persist.dismissToast} />}
+      </DialogCtx.Provider>
+    </PersistCtx.Provider>
+  );
+}
+
+function Toast({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-md border px-3 py-2 text-sm shadow-lg"
+      style={{
+        borderColor: 'var(--border)',
+        background: 'var(--bg-elevated)',
+        color: 'var(--text)',
+      }}
+    >
+      {message}
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Dismiss"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <X size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -92,6 +124,7 @@ function TopBar() {
   const actions = useStore((s) => s.actions);
   const editorPane = useStore((s) => s.ui.editorPane);
   const setDialog = useContext(DialogCtx);
+  const persist = useContext(PersistCtx);
   const hasTables = useStore((s) => s.schema.tables.length > 0);
   const dark =
     theme === 'dark' ||
@@ -106,7 +139,19 @@ function TopBar() {
         <Database size={18} style={{ color: 'var(--accent)' }} />
         <span>Pglass</span>
       </div>
+      {persist?.fileName && (
+        <span className="mono text-xs" style={{ color: 'var(--text-muted)' }}>
+          {persist.fileName}
+        </span>
+      )}
       <div className="flex-1" />
+      <ToolbarButton icon={<FolderOpen size={15} />} label="Open" onClick={() => persist?.open()} />
+      <ToolbarButton
+        icon={<Save size={15} />}
+        label="Save"
+        onClick={() => persist?.save()}
+        disabled={!hasTables}
+      />
       <ToolbarButton
         icon={<FileUp size={15} />}
         label="Import"
