@@ -7,8 +7,11 @@ import type {
   Index,
   RefAction,
   Relationship,
+  Routine,
   Schema,
   Table,
+  Trigger,
+  TriggerEvent,
   View,
 } from '../../model/types.ts';
 
@@ -74,6 +77,37 @@ function writeEnum(en: EnumType): string {
 function writeView(v: View): string {
   const kw = v.materialized ? 'MATERIALIZED VIEW' : 'VIEW';
   return `CREATE ${kw} ${qname(v.namespace, v.name)} AS\n${v.query};`;
+}
+
+/** Pick a dollar-quote tag that doesn't collide with the body. */
+function dollarTag(body: string): string {
+  if (!body.includes('$$')) return '$$';
+  for (const tag of ['$fn$', '$body$', '$pgl$']) {
+    if (!body.includes(tag)) return tag;
+  }
+  let i = 0;
+  let tag = `$q${i}$`;
+  while (body.includes(tag)) tag = `$q${++i}$`;
+  return tag;
+}
+
+function writeRoutine(r: Routine): string {
+  const tag = dollarTag(r.body);
+  const returns = r.returns ? ` RETURNS ${r.returns}` : '';
+  return `CREATE OR REPLACE FUNCTION ${qname(r.namespace, r.name)}(${r.args})${returns} LANGUAGE ${r.language} AS ${tag}\n${r.body}\n${tag};`;
+}
+
+const TRIGGER_EVENT_ORDER: TriggerEvent[] = ['insert', 'update', 'delete', 'truncate'];
+
+function writeTrigger(schema: Schema, tg: Trigger): string | null {
+  const table = schema.tables.find((t) => t.id === tg.table);
+  if (!table) return null;
+  const events = TRIGGER_EVENT_ORDER.filter((e) => tg.events.includes(e))
+    .map((e) => e.toUpperCase())
+    .join(' OR ');
+  const timing = tg.timing.toUpperCase();
+  const level = tg.level === 'row' ? 'ROW' : 'STATEMENT';
+  return `CREATE TRIGGER ${ident(tg.name)} ${timing} ${events} ON ${qname(table.namespace, table.name)} FOR EACH ${level} EXECUTE FUNCTION ${ident(tg.functionName)}();`;
 }
 
 function writeColumn(col: Column, table: Table): string {
@@ -195,12 +229,21 @@ export function exportDDL(schema: Schema, options: Partial<DdlOptions> = {}): st
 
   if (opts.includeDropPrelude) {
     const drops: string[] = [];
+    for (const tg of schema.triggers) {
+      const table = schema.tables.find((t) => t.id === tg.table);
+      if (table)
+        drops.push(
+          `DROP TRIGGER IF EXISTS ${ident(tg.name)} ON ${qname(table.namespace, table.name)} CASCADE;`,
+        );
+    }
     for (const v of schema.views)
       drops.push(
         `DROP ${v.materialized ? 'MATERIALIZED VIEW' : 'VIEW'} IF EXISTS ${qname(v.namespace, v.name)} CASCADE;`,
       );
     for (const t of schema.tables)
       drops.push(`DROP TABLE IF EXISTS ${qname(t.namespace, t.name)} CASCADE;`);
+    for (const r of schema.routines)
+      drops.push(`DROP FUNCTION IF EXISTS ${qname(r.namespace, r.name)} CASCADE;`);
     for (const e of schema.enums)
       drops.push(`DROP TYPE IF EXISTS ${qname(e.namespace, e.name)} CASCADE;`);
     if (drops.length) sections.push(drops.join('\n'));
@@ -242,6 +285,15 @@ export function exportDDL(schema: Schema, options: Partial<DdlOptions> = {}): st
 
   // 5b. views (after the tables they read from)
   for (const v of schema.views) sections.push(writeView(v));
+
+  // 5c. functions (may reference tables/views)
+  for (const r of schema.routines) sections.push(writeRoutine(r));
+
+  // 5d. triggers (need both their table and function to exist)
+  for (const tg of schema.triggers) {
+    const s = writeTrigger(schema, tg);
+    if (s) sections.push(s);
+  }
 
   // 6. comments
   if (opts.includeComments) {

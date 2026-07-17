@@ -64,6 +64,21 @@ export function viewBox(view: { query: string; pos?: { x: number; y: number } })
   return { x: p.x, y: p.y, w, h };
 }
 
+export const ROUTINE_W = 250;
+const ROUTINE_LINE_H = 14;
+const ROUTINE_MAX_LINES = 6;
+
+export function routineSize(routine: { body: string }): { w: number; h: number } {
+  const lines = Math.min(ROUTINE_MAX_LINES, Math.max(1, routine.body.split('\n').length));
+  return { w: ROUTINE_W, h: HEADER_H + 8 + lines * ROUTINE_LINE_H + 8 };
+}
+
+export function routineBox(routine: { body: string; pos?: { x: number; y: number } }): Box {
+  const p = routine.pos ?? { x: 0, y: 0 };
+  const { w, h } = routineSize(routine);
+  return { x: p.x, y: p.y, w, h };
+}
+
 /** Y offset (world coords) of a column row's vertical centre. In compact mode a
  *  hidden column attaches to the "… more" row so its FK edge still lands sensibly. */
 export function columnPortY(table: Table, columnId: ColumnId, compact = false): number {
@@ -204,7 +219,12 @@ export function routeEdge(
 /** World-space bounding box of all tables + enums, for zoom-to-fit / export. */
 export function contentBounds(schema: Schema, margin = 40): Box {
   const positionedViews = schema.views.filter((v) => v.pos);
-  if (schema.tables.length === 0 && positionedViews.length === 0) {
+  const positionedRoutines = schema.routines.filter((r) => r.pos);
+  if (
+    schema.tables.length === 0 &&
+    positionedViews.length === 0 &&
+    positionedRoutines.length === 0
+  ) {
     return { x: 0, y: 0, w: 400, h: 300 };
   }
   let minX = Number.POSITIVE_INFINITY;
@@ -219,6 +239,7 @@ export function contentBounds(schema: Schema, margin = 40): Box {
   };
   for (const t of schema.tables) grow(tableBox(t));
   for (const v of positionedViews) grow(viewBox(v));
+  for (const r of positionedRoutines) grow(routineBox(r));
   return {
     x: minX - margin,
     y: minY - margin,

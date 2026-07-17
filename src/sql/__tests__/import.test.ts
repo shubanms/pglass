@@ -182,3 +182,67 @@ CREATE MATERIALIZED VIEW public.daily AS
     expect(ddl).toContain('SELECT sum(total) FROM public.orders');
   });
 });
+
+describe('function & trigger SQL round-trip', () => {
+  const SQL = `CREATE TABLE public.orders (
+    id bigint NOT NULL,
+    updated_at timestamp with time zone
+);
+
+CREATE FUNCTION public.set_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+CREATE FUNCTION public.add(a integer, b integer) RETURNS integer
+    LANGUAGE sql
+    AS $$ select a + b $$;
+
+CREATE TRIGGER orders_touch BEFORE INSERT OR UPDATE ON public.orders
+    FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+`;
+
+  it('promotes functions to first-class routines', () => {
+    const { schema } = importSql(SQL);
+    expect(schema.routines).toHaveLength(2);
+    const fn = schema.routines.find((r) => r.name === 'set_updated_at')!;
+    expect(fn.returns).toBe('trigger');
+    expect(fn.language).toBe('plpgsql');
+    expect(fn.body).toContain('new.updated_at = now()');
+    const add = schema.routines.find((r) => r.name === 'add')!;
+    expect(add.args).toBe('a integer, b integer');
+    expect(add.returns).toBe('integer');
+    expect(add.body).toBe('select a + b');
+  });
+
+  it('promotes the trigger and attaches it to its table', () => {
+    const { schema } = importSql(SQL);
+    expect(schema.triggers).toHaveLength(1);
+    const tg = schema.triggers[0]!;
+    expect(tg.name).toBe('orders_touch');
+    expect(tg.timing).toBe('before');
+    expect(tg.events).toEqual(['insert', 'update']);
+    expect(tg.level).toBe('row');
+    expect(tg.functionName).toBe('set_updated_at');
+    const orders = schema.tables.find((t) => t.name === 'orders')!;
+    expect(tg.table).toBe(orders.id);
+  });
+
+  it('re-exports functions and triggers as valid DDL', () => {
+    const { schema } = importSql(SQL);
+    const ddl = exportDDL(schema);
+    expect(ddl).toContain(
+      'CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger LANGUAGE plpgsql',
+    );
+    expect(ddl).toContain('CREATE TRIGGER orders_touch BEFORE INSERT OR UPDATE ON orders');
+    expect(ddl).toContain('FOR EACH ROW EXECUTE FUNCTION set_updated_at()');
+    // the re-exported DDL should itself re-import to the same shape
+    const { schema: round } = importSql(ddl);
+    expect(round.routines).toHaveLength(2);
+    expect(round.triggers).toHaveLength(1);
+  });
+});

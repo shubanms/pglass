@@ -8,7 +8,9 @@ import type {
   IndexId,
   NoteId,
   RelId,
+  RoutineId,
   TableId,
+  TriggerId,
   ViewId,
 } from './types.ts';
 
@@ -21,5 +23,7 @@ export const newRelId = (): RelId => `r_${nano()}` as RelId;
 export const newIndexId = (): IndexId => `i_${nano()}` as IndexId;
 export const newEnumId = (): EnumId => `e_${nano()}` as EnumId;
 export const newViewId = (): ViewId => `v_${nano()}` as ViewId;
+export const newRoutineId = (): RoutineId => `fn_${nano()}` as RoutineId;
+export const newTriggerId = (): TriggerId => `tg_${nano()}` as TriggerId;
 export const newNoteId = (): NoteId => `n_${nano()}` as NoteId;
 export const newGroupId = (): GroupId => `g_${nano()}` as GroupId;

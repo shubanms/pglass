@@ -8,7 +8,9 @@ import {
   newEnumId,
   newIndexId,
   newRelId,
+  newRoutineId,
   newTableId,
+  newTriggerId,
   newViewId,
 } from '../../model/ids.ts';
 import { emptySchema } from '../../model/schema.ts';
@@ -109,9 +111,10 @@ export function importSql(sql: string, now = new Date().toISOString()): ImportRe
     }
   }
 
-  // Promote captured CREATE VIEW / MATERIALIZED VIEW objects to first-class
-  // views (query body preserved verbatim); leave functions/triggers as raw.
-  promoteViews(schema);
+  // Promote captured CREATE VIEW / FUNCTION / TRIGGER objects to first-class
+  // model entities; leave anything else (procedures we can't parse, aggregates…)
+  // in the raw bucket.
+  promoteRawObjects(schema, findTable);
 
   return { schema, diagnostics };
 }
@@ -119,31 +122,135 @@ export function importSql(sql: string, now = new Date().toISOString()): ImportRe
 const VIEW_RE =
   /^create\s+(?:or\s+replace\s+)?(?:materialized\s+)?view\s+(?:if\s+not\s+exists\s+)?"?([a-z0-9_.]+)"?\s*(?:\([^)]*\))?\s+as\s+([\s\S]*)$/i;
 
-function promoteViews(schema: Schema) {
+function promoteRawObjects(schema: Schema, findTable: (q: string) => Table | undefined) {
   const raw = schema.meta.rawObjects;
   if (!raw) return;
   const remaining: { kind: string; name: string; sql: string }[] = [];
   for (const obj of raw) {
-    if (obj.kind !== 'view' && obj.kind !== 'materialized view') {
-      remaining.push(obj);
-      continue;
+    if (obj.kind === 'view' || obj.kind === 'materialized view') {
+      const m = VIEW_RE.exec(obj.sql.trim());
+      if (m) {
+        const [ns, name] = splitQual(m[1]!);
+        schema.views.push({
+          id: newViewId(),
+          namespace: ns || 'public',
+          name,
+          query: m[2]!.trim().replace(/;\s*$/, '').trim(),
+          materialized: obj.kind === 'materialized view',
+        });
+        continue;
+      }
+    } else if (obj.kind === 'function') {
+      const fn = parseFunctionSql(obj.sql);
+      if (fn) {
+        schema.routines.push({ id: newRoutineId(), ...fn });
+        continue;
+      }
+    } else if (obj.kind === 'trigger') {
+      const tg = parseTriggerSql(obj.sql);
+      const table = tg ? findTable(`${tg.tableNamespace}.${tg.tableName}`) : undefined;
+      if (tg && table) {
+        schema.triggers.push({
+          id: newTriggerId(),
+          name: tg.name,
+          table: table.id,
+          timing: tg.timing,
+          events: tg.events,
+          level: tg.level,
+          functionName: tg.functionName,
+        });
+        continue;
+      }
     }
-    const m = VIEW_RE.exec(obj.sql.trim());
-    if (!m) {
-      remaining.push(obj);
-      continue;
-    }
-    const [ns, name] = splitQual(m[1]!);
-    const query = m[2]!.trim().replace(/;\s*$/, '').trim();
-    schema.views.push({
-      id: newViewId(),
-      namespace: ns || 'public',
-      name,
-      query,
-      materialized: obj.kind === 'materialized view',
-    });
+    remaining.push(obj);
   }
   schema.meta.rawObjects = remaining.length ? remaining : undefined;
+}
+
+function trimBody(body: string): string {
+  return body.trim();
+}
+
+function parseFunctionSql(sql: string): {
+  namespace: string;
+  name: string;
+  args: string;
+  returns: string;
+  language: string;
+  body: string;
+} | null {
+  const s = sql.trim();
+  const head = /^create\s+(?:or\s+replace\s+)?function\s+("?[a-z0-9_.]+"?)\s*\(/i.exec(s);
+  if (!head) return null;
+  const [ns, name] = splitQual(head[1]!.replace(/"/g, ''));
+  // args: balanced parens starting at the '(' the head match ends on
+  const openIdx = head.index + head[0].length - 1;
+  let depth = 0;
+  let argsEnd = -1;
+  for (let i = openIdx; i < s.length; i++) {
+    if (s[i] === '(') depth++;
+    else if (s[i] === ')') {
+      depth--;
+      if (depth === 0) {
+        argsEnd = i;
+        break;
+      }
+    }
+  }
+  if (argsEnd < 0) return null;
+  const args = s.slice(openIdx + 1, argsEnd).trim();
+  const rest = s.slice(argsEnd + 1);
+  const returns =
+    /\breturns\s+([\s\S]*?)\s+(?:language|as|stable|volatile|immutable|strict|security|cost|rows|parallel|set|window|leakproof)\b/i
+      .exec(rest)?.[1]
+      ?.trim()
+      .replace(/\s+/g, ' ') ??
+    /\breturns\s+([a-z0-9_.[\]]+)/i.exec(rest)?.[1] ??
+    '';
+  const language = /\blanguage\s+"?([a-z0-9_]+)"?/i.exec(rest)?.[1]?.toLowerCase() ?? 'sql';
+  let body = '';
+  const dollar = /\bas\s+(\$[a-z0-9_]*\$)([\s\S]*?)\1/i.exec(rest);
+  if (dollar) body = dollar[2]!;
+  else {
+    const single = /\bas\s+'([\s\S]*?)'\s*(?:language|;|$)/i.exec(rest);
+    if (single) body = single[1]!.replace(/''/g, "'");
+  }
+  return { namespace: ns || 'public', name, args, returns, language, body: trimBody(body) };
+}
+
+const TRIGGER_EVENTS = ['insert', 'update', 'delete', 'truncate'] as const;
+
+function parseTriggerSql(sql: string): {
+  name: string;
+  tableNamespace: string;
+  tableName: string;
+  timing: 'before' | 'after' | 'instead of';
+  events: ('insert' | 'update' | 'delete' | 'truncate')[];
+  level: 'row' | 'statement';
+  functionName: string;
+} | null {
+  const s = sql.trim();
+  const m =
+    /^create\s+(?:constraint\s+)?trigger\s+"?([a-z0-9_]+)"?\s+(before|after|instead\s+of)\s+([\s\S]*?)\s+on\s+("?[a-z0-9_.]+"?)/i.exec(
+      s,
+    );
+  if (!m) return null;
+  const timing = m[2]!.toLowerCase().replace(/\s+/g, ' ') as 'before' | 'after' | 'instead of';
+  const eventsRaw = m[3]!;
+  const events = TRIGGER_EVENTS.filter((e) => new RegExp(`\\b${e}\\b`, 'i').test(eventsRaw));
+  const [ns, tableName] = splitQual(m[4]!.replace(/"/g, ''));
+  const level = /for\s+each\s+statement/i.test(s) ? 'statement' : 'row';
+  const fnMatch = /execute\s+(?:function|procedure)\s+"?([a-z0-9_.]+)"?/i.exec(s);
+  const functionName = fnMatch ? splitQual(fnMatch[1]!.replace(/"/g, ''))[1] : '';
+  return {
+    name: m[1]!,
+    tableNamespace: ns || 'public',
+    tableName,
+    timing,
+    events: events.length ? events : ['insert'],
+    level,
+    functionName,
+  };
 }
 
 // ─── CREATE TYPE ... AS ENUM ─────────────────────────────────────────────
